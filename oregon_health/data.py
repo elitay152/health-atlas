@@ -70,3 +70,13 @@ def demo_rows():
                              measureid=measure, year="2022", data_value_type="Crude prevalence",
                              data_value=value, low_confidence_limit=value - 1, high_confidence_limit=value + 1))
     return rows
+
+
+def county_profile(db, fips, year):
+    """A single year's estimates; absent measures remain absent, never zero."""
+    return db.execute("""
+        SELECT measure, prevalence, low, high
+        FROM estimates
+        WHERE fips = ? AND year = ? AND measure IN ('DIABETES', 'CASTHMA', 'OBESITY')
+        ORDER BY measure
+    """, [fips, year]).df()

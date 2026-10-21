@@ -41,7 +41,7 @@ def county_features(frame, selected):
 def county_deck(frame, selected):
     return pdk.Deck(
         layers=[pdk.Layer(
-            "GeoJsonLayer", county_features(frame, selected),
+            "GeoJsonLayer", county_features(frame, selected), id="oregon-counties",
             pickable=True, filled=True, stroked=True,
             get_fill_color="properties.color", get_line_color="properties.outline",
             get_line_width="properties.line_width", line_width_units="'pixels'", line_width_min_pixels=1, line_width_max_pixels=3,
