@@ -12,3 +12,7 @@ Use the existing checkout in cloud tasks; each task already has an isolated envi
 Use synthetic records for tests and label demo values clearly. Never commit patient-level information, credentials or downloaded databases. Parameterize SQL values. Preserve geography identifiers as strings with leading zeros. Show data sources, estimate years and uncertainty in new displays.
 
 Contributors can link their merged pull requests in portfolios and explain their design choices, review feedback, and validation. Agree on issue ownership before starting overlapping changes.
+
+## Expansion backlog
+
+The phased expansion plan and repeatable GitHub setup are documented in [docs/planning/README.md](docs/planning/README.md). Start with a Ready research issue before implementing its dependent data integration. Use the issue forms and PR template, link the issue in the PR, and keep board status aligned with the work.

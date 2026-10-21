@@ -1,0 +1,22 @@
+name: Bug report
+description: Report broken behavior with reproducible steps.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the view, selected geography, source period and expected versus actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Evidence
+      description: Add screenshots or sanitized logs. Remove credentials, key= query strings, and any private information.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser, device, deployment or local version.

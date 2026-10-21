@@ -1,0 +1,405 @@
+{
+  "repository": "elitay152/health-atlas",
+  "project_title": "Health Atlas \u2014 Expansion",
+  "statuses": [
+    "Backlog",
+    "Ready",
+    "In progress",
+    "In review",
+    "Done"
+  ],
+  "milestones": [
+    {
+      "phase": 1,
+      "title": "Phase 1 \u2014 Source research",
+      "description": "Confirm sources, reuse rights, identifiers, coverage and bounded integration plans before coding."
+    },
+    {
+      "phase": 2,
+      "title": "Phase 2 \u2014 Oregon healthcare access",
+      "description": "Map verified public facility locations and shortage areas; search and data-quality checks."
+    },
+    {
+      "phase": 3,
+      "title": "Phase 3 \u2014 Local health exploration",
+      "description": "Add tract-level estimates and boundaries with explicit uncertainty and geographic joins."
+    },
+    {
+      "phase": 4,
+      "title": "Phase 4 \u2014 Service-area analysis",
+      "description": "Define and compare areas using defensible summaries; separate community need from commercial demand."
+    },
+    {
+      "phase": 5,
+      "title": "Phase 5 \u2014 National expansion",
+      "description": "Generalize region configuration and validate scalable, reproducible multi-state workflows."
+    }
+  ],
+  "issues": [
+    {
+      "id": "SRC-CMS",
+      "phase": 1,
+      "title": "Evaluate CMS public facility datasets",
+      "labels": [
+        "research",
+        "data"
+      ],
+      "depends_on": [],
+      "acceptance": [
+        "Compare CMS facility datasets for coverage, reuse rights, update schedules and documented service fields.",
+        "Recommend hospitals as a bounded first target; record identifier semantics (CMS IDs versus NPIs), missing locations and API constraints.",
+        "Save source links and an evidence-based recommendation under docs/data-sources/."
+      ],
+      "validation": "A reviewer can follow the official links and reproduce representative read-only queries.",
+      "sources": [
+        "https://data.cms.gov/provider-data/",
+        "https://data.cms.gov/"
+      ]
+    },
+    {
+      "id": "SRC-HRSA",
+      "phase": 1,
+      "title": "Evaluate HRSA shortage designations and health-center data",
+      "labels": [
+        "research",
+        "data",
+        "gis"
+      ],
+      "depends_on": [],
+      "acceptance": [
+        "Identify authoritative downloads/APIs, licenses and update dates for HPSAs and health-center sites.",
+        "Distinguish geographic, population and facility designations; retain discipline and active status.",
+        "Document geographic identifiers, geometry availability and which claims the data cannot support."
+      ],
+      "validation": "Review sample Oregon records and document a defensible join and map strategy.",
+      "sources": [
+        "https://data.hrsa.gov/"
+      ]
+    },
+    {
+      "id": "SRC-LOCAL",
+      "phase": 1,
+      "title": "Evaluate tract-level PLACES and Census geography",
+      "labels": [
+        "research",
+        "data",
+        "gis"
+      ],
+      "depends_on": [],
+      "acceptance": [
+        "Confirm Oregon tract estimates, available conditions/years, suppression and uncertainty fields.",
+        "Identify compatible tract boundary vintages and 11-digit GEOIDs.",
+        "Document why ZCTAs, postal ZIP codes and census tracts cannot be treated interchangeably."
+      ],
+      "validation": "Reproduce a sample county-to-tract join and record coverage/size estimates without changing the app.",
+      "sources": [
+        "https://www.cdc.gov/places/",
+        "https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html"
+      ]
+    },
+    {
+      "id": "SRC-CONTRACT",
+      "phase": 1,
+      "title": "Define the expansion source catalog and data contracts",
+      "labels": [
+        "research",
+        "data"
+      ],
+      "depends_on": [],
+      "acceptance": [
+        "Specify source URL, reuse rights, geography, identifiers, periods, update frequency and fetched-at metadata.",
+        "Define missing-value, uncertainty and geographic-join rules with small fixture examples.",
+        "Record needs-versus-demand limits: prevalence is not patient-level diagnosis, service capacity or purchase intent."
+      ],
+      "validation": "Review the contract against existing CDC/Census imports and candidate facility sources.",
+      "sources": [
+        "https://www.cdc.gov/places/",
+        "https://www.census.gov/data/developers/data-sets/acs-5year.html"
+      ]
+    },
+    {
+      "id": "ACCESS-CMS",
+      "phase": 2,
+      "title": "Import and validate Oregon hospitals",
+      "labels": [
+        "data",
+        "backend"
+      ],
+      "depends_on": [
+        "SRC-CMS",
+        "SRC-CONTRACT"
+      ],
+      "acceptance": [
+        "Implement bounded, cached imports for the recommended hospital dataset with retained provenance.",
+        "Deduplicate stable facility IDs and validate Oregon geography; retain unresolved locations without inventing facility coordinates.",
+        "Preserve prior snapshots on failures and add fixtures for duplicates, missing fields and changed records."
+      ],
+      "validation": "Run focused import/query tests and a documented live coverage check; no live-network dependency in CI."
+    },
+    {
+      "id": "ACCESS-HRSA",
+      "phase": 2,
+      "title": "Import Oregon shortage designations",
+      "labels": [
+        "data",
+        "backend",
+        "gis"
+      ],
+      "depends_on": [
+        "SRC-HRSA",
+        "SRC-CONTRACT"
+      ],
+      "acceptance": [
+        "Preserve designation ID, type, discipline, status, geography and source dates.",
+        "Use authoritative geometries/joins without collapsing unlike designations into one score.",
+        "Cache validated imports and retain old snapshots during failures."
+      ],
+      "validation": "Check known Oregon examples and test inactive designations, missing geometry and duplicates."
+    },
+    {
+      "id": "ACCESS-MAP",
+      "phase": 2,
+      "title": "Add facility and shortage-area map layers",
+      "labels": [
+        "frontend",
+        "gis"
+      ],
+      "depends_on": [
+        "ACCESS-CMS",
+        "ACCESS-HRSA"
+      ],
+      "acceptance": [
+        "Add independent toggles with legends and accessible facility/area detail alternatives.",
+        "Show only validated coordinates and label unresolved-location coverage.",
+        "Keep health prevalence separate from shortage designations and facility supply; retain attribution."
+      ],
+      "validation": "Verify layer controls, picking/details, mobile behavior and absence of map API key requirements unless separately justified."
+    },
+    {
+      "id": "ACCESS-SEARCH",
+      "phase": 2,
+      "title": "Add facility search and public detail views",
+      "labels": [
+        "frontend",
+        "backend"
+      ],
+      "depends_on": [
+        "ACCESS-CMS"
+      ],
+      "acceptance": [
+        "Search public facility names and supported location/type fields.",
+        "Display only services/attributes actually reported by the selected source with dates and missing-value labels.",
+        "Link facility locations to surrounding community context without claiming it describes facility patients."
+      ],
+      "validation": "Test search filters, empty results, stable facility IDs and safe public-data exports."
+    },
+    {
+      "id": "ACCESS-QUALITY",
+      "phase": 2,
+      "title": "Report facility and shortage-data coverage",
+      "labels": [
+        "data",
+        "testing"
+      ],
+      "depends_on": [
+        "ACCESS-CMS",
+        "ACCESS-HRSA"
+      ],
+      "acceptance": [
+        "Report duplicates, missing/invalid coordinates, source age and unresolved joins.",
+        "Distinguish absent values, unsupported fields and unavailable sources.",
+        "Add repeatable checks and documentation for reviewers."
+      ],
+      "validation": "Use fixtures covering each failure mode and confirm the report never treats missing supply as zero facilities."
+    },
+    {
+      "id": "LOCAL-IMPORT",
+      "phase": 3,
+      "title": "Import Oregon tract health estimates",
+      "labels": [
+        "data",
+        "backend"
+      ],
+      "depends_on": [
+        "SRC-LOCAL",
+        "SRC-CONTRACT"
+      ],
+      "acceptance": [
+        "Implement documented bounded pagination and validated 11-digit tract IDs.",
+        "Preserve measure definitions, estimate years, intervals and unavailable values.",
+        "Keep county and tract estimates in distinct query paths and retain old snapshots on failure."
+      ],
+      "validation": "Test pagination boundaries, duplicate/suppressed rows, source failures and representative Oregon coverage."
+    },
+    {
+      "id": "LOCAL-BOUNDARIES",
+      "phase": 3,
+      "title": "Add compatible Oregon tract boundaries",
+      "labels": [
+        "gis",
+        "data"
+      ],
+      "depends_on": [
+        "SRC-LOCAL"
+      ],
+      "acceptance": [
+        "Bundle or cache licensed boundaries with explicit vintage and provenance.",
+        "Validate tract GEOIDs and county prefixes; report missing joins and changed boundaries.",
+        "Document generalization and avoid representing ZIP polygons as tracts."
+      ],
+      "validation": "Check a sample county visually and test geometry/GEOID coverage against the selected release."
+    },
+    {
+      "id": "LOCAL-DRILL",
+      "phase": 3,
+      "title": "Build state-to-county-to-tract navigation",
+      "labels": [
+        "frontend",
+        "gis"
+      ],
+      "depends_on": [
+        "LOCAL-IMPORT",
+        "LOCAL-BOUNDARIES",
+        "ACCESS-MAP"
+      ],
+      "acceptance": [
+        "Offer map and keyboard-accessible drill-down with persistent geography selection.",
+        "Label geography, source period, missing records and uncertainty at each level.",
+        "Preserve shareable links and usable mobile performance."
+      ],
+      "validation": "Browser-test drill-down, links, unsupported locations and mobile layout."
+    },
+    {
+      "id": "LOCAL-LIMITS",
+      "phase": 3,
+      "title": "Document and expose small-area interpretation limits",
+      "labels": [
+        "research",
+        "frontend"
+      ],
+      "depends_on": [
+        "LOCAL-IMPORT",
+        "LOCAL-BOUNDARIES"
+      ],
+      "acceptance": [
+        "Explain modeled estimates, uncertainty, age composition and geographic changes in context.",
+        "Avoid treating tract estimates as individual diagnoses or summing prevalence rates.",
+        "Add clear unavailable/suppressed-state examples and a source-methodology reference."
+      ],
+      "validation": "Review scenarios with missing data and unlike periods; verify labels/exports retain definitions."
+    },
+    {
+      "id": "AREA-DEFINE",
+      "phase": 4,
+      "title": "Define reproducible service areas",
+      "labels": [
+        "gis",
+        "backend",
+        "frontend"
+      ],
+      "depends_on": [
+        "LOCAL-DRILL"
+      ],
+      "acceptance": [
+        "Start with explicit sets of counties or tracts and stable geography IDs.",
+        "Persist/share selected boundaries and document inclusion rules, overlaps and edge effects.",
+        "Exclude private patient/client addresses and defer drive-time APIs until their need and access are approved."
+      ],
+      "validation": "Round-trip saved areas and test duplicates, overlaps, empty areas and changed boundaries."
+    },
+    {
+      "id": "AREA-SUMMARY",
+      "phase": 4,
+      "title": "Build defensible service-area summaries",
+      "labels": [
+        "data",
+        "backend",
+        "research"
+      ],
+      "depends_on": [
+        "AREA-DEFINE",
+        "LOCAL-LIMITS",
+        "ACCESS-QUALITY"
+      ],
+      "acceptance": [
+        "Count validated public facility locations with deduplication and source dates.",
+        "Aggregate demographic quantities only across compatible, non-overlapping areas with documented uncertainty limits.",
+        "Do not average/sum health prevalence or invent combined intervals when needed denominators/covariance are unavailable."
+      ],
+      "validation": "Use known fixtures and negative cases to prove unsupported aggregations are refused or clearly omitted."
+    },
+    {
+      "id": "AREA-COMPARE",
+      "phase": 4,
+      "title": "Compare and export service-area context",
+      "labels": [
+        "frontend",
+        "data"
+      ],
+      "depends_on": [
+        "AREA-SUMMARY"
+      ],
+      "acceptance": [
+        "Compare selected areas with units, periods, source references and missing-value status.",
+        "Label facility locations as supply indicators, not verified capacity or utilization.",
+        "Keep community need separate from commercial demand; no opaque opportunity score."
+      ],
+      "validation": "Verify reproducible comparisons, share links, CSVs, and mismatched-period/coverage warnings."
+    },
+    {
+      "id": "NATIONAL-CONFIG",
+      "phase": 5,
+      "title": "Replace Oregon assumptions with region configuration",
+      "labels": [
+        "backend",
+        "data"
+      ],
+      "depends_on": [
+        "AREA-COMPARE"
+      ],
+      "acceptance": [
+        "Parameterize state FIPS, expected geography, source coverage and map bounds.",
+        "Migrate existing links/caches safely while preserving Oregon behavior.",
+        "Prepare Oregon and one additional state as representative targets."
+      ],
+      "validation": "Run region fixtures and Oregon regressions; verify no hardcoded 36-county assumption leaks across states."
+    },
+    {
+      "id": "NATIONAL-SCALE",
+      "phase": 5,
+      "title": "Scale storage and source refreshes across states",
+      "labels": [
+        "backend",
+        "data",
+        "testing"
+      ],
+      "depends_on": [
+        "NATIONAL-CONFIG"
+      ],
+      "acceptance": [
+        "Define measured resource budgets, partition/cache strategy and bounded downloads.",
+        "Use shared request limits appropriate to deployment replicas and safe concurrent snapshot replacement.",
+        "Keep representative development setup small and reproducible."
+      ],
+      "validation": "Measure cold/warm loads, memory and failure recovery on two states before broad rollout."
+    },
+    {
+      "id": "NATIONAL-VERIFY",
+      "phase": 5,
+      "title": "Validate multi-state coverage and contributor workflow",
+      "labels": [
+        "testing",
+        "documentation"
+      ],
+      "depends_on": [
+        "NATIONAL-SCALE"
+      ],
+      "acceptance": [
+        "Verify authoritative sources/periods, joins and missingness in two states.",
+        "Document contributor setup and required checks with small non-secret CI fixtures.",
+        "Record remaining regional limitations rather than claiming nationwide completeness."
+      ],
+      "validation": "Complete a reproducible release checklist covering data, maps, links, exports, source outages and mobile use."
+    }
+  ]
+}

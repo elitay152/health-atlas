@@ -1,0 +1,31 @@
+name: Feature or improvement
+description: Propose a focused change that one contributor can own.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User need
+      description: Who needs this and what decision or task will it help?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and acceptance criteria
+      description: Use checkboxes for observable outcomes. Keep the first version small.
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Data and dependencies
+      description: Link source documentation and blocking issues. State geography, period, identifiers and license when relevant. Never include credentials or private patient data.
+  - type: textarea
+    id: validation
+    attributes:
+      label: How to verify
+      description: Describe relevant tests, data-quality checks, or a functional example.
+    validations:
+      required: true

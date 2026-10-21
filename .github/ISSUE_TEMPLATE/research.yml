@@ -1,0 +1,30 @@
+name: Data source research
+description: Evaluate a source before building an integration.
+title: "[Research] "
+labels: ["research", "data"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Research question and candidate sources
+    validations:
+      required: true
+  - type: textarea
+    id: checks
+    attributes:
+      label: Evaluation checklist
+      value: |
+        - [ ] Authoritative source and access route
+        - [ ] License, attribution, reuse restrictions
+        - [ ] Geography, identifiers, boundary vintage
+        - [ ] Estimate period, update frequency and availability
+        - [ ] Population universe, uncertainty and missing values
+        - [ ] API requirements, limits, response sizes and credentials
+        - [ ] Join strategy and known interpretation limits
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: Deliverable and decision
+      description: Link the evidence and propose a bounded first integration or explain why to defer it.
+    validations:
+      required: true
