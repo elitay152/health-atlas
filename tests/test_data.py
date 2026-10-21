@@ -50,7 +50,7 @@ def test_app_comparison(monkeypatch):
     assert not app.exception
     assert "DEMO" in app.warning[0].value
     assert len(app.dataframe[0].value) == 3
-    app.sidebar.selectbox[0].select("OBESITY").run()
+    app.selectbox(key="health_measure").select("OBESITY").run()
     assert not app.exception
     assert min(app.dataframe[0].value["Estimate (%)"]) == 30
     app.multiselect[0].set_value([]).run()

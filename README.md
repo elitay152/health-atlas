@@ -74,7 +74,7 @@ Boundaries are bundled locally, so deployment needs no map API key, tile provide
 
 ## County profiles and sharing
 
-Click a county on the map to open **County spotlight**, or use the keyboard-accessible **County profile** selector below the comparison. A profile shows diabetes, current asthma and obesity estimates with 95% confidence intervals for the selected estimate year. Missing measures say **Unavailable**; data from a different year is not silently substituted. **Add county to comparison** adds the county to the existing comparison when it has a record for the current map measure.
+Click a county on the map to open **County spotlight**, or use the keyboard-accessible **County profile** selector immediately below the map. A profile shows diabetes, current asthma and obesity estimates with 95% confidence intervals for the selected estimate year. Missing measures say **Unavailable**; data from a different year is not silently substituted. **Add county to comparison** adds the county to the existing comparison when it has a record for the current map measure.
 
 Selecting a profile updates the browser URL. Copy it to share the county, year, current measure and explicit synthetic demo mode. For example, `?county=41051&year=2023&measure=DIABETES&demo=0` opens Multnomah County using real data. Links refer to the deployment's configured CDC release, not an immutable historical snapshot. Unknown county IDs are ignored with a warning, and unavailable year/measure options fall back to available data shown in the controls. Clearing the profile removes the county parameter.
 
@@ -133,3 +133,11 @@ For the selected estimate year, coverage counts each of Oregon's 36 expected cou
 A cache older than 24 hours (CDC) or 30 days (Census) is **Refresh due**, which describes fetch age rather than the vintage of the estimate or whether a newer official release exists. Failed refreshes and missing Census-key configuration are recorded separately from coverage. Existing snapshots stay usable. If nothing has been loaded, coverage is **not evaluated**, never reported as zero. Older snapshots without refresh metadata say no outcome has been recorded yet; an old failure does not mark a newer imported snapshot as retained after failure.
 
 Refresh outcomes are persisted in ignored `data/.source-status.sqlite3`, using only a source identifier, an outcome enum and a timestamp. Exception messages, credentials, request URLs and API key values are never stored. Cooldown-blocked actions are not recorded as new failed fetches. The status UI remains available when the initial CDC fetch fails and no health database exists.
+
+## Navigation and mobile use
+
+Measure and year filters are on the main page, above the map, so they remain accessible when the mobile sidebar is closed. The sidebar holds data settings and refresh controls. Page links jump to the map, county profile, full comparison or data-status panel.
+
+The page follows **map → county profile → comparison**. Clicking a county exposes a **View county profile** link below the map. The profile's add button updates the comparison; **View comparison** and **Back to map** links connect the steps. Shared comparison/profile links retain the same state as before.
+
+Longer map attribution, methodology and interpretation notes are in labeled expanders. Confidence intervals, margins of error, source periods, missing-value messages and refresh warnings remain available. Source import timestamps are consolidated in the data-status panel. Navigation does not add network requests or change estimates.

@@ -61,10 +61,10 @@ def test_shared_demo_profile_and_add_comparison(monkeypatch):
     app.selectbox(key="profile_county").select("41039").run()
     assert app.query_params["county"] == "41039"
     assert any(title.value == "Lane County" for title in app.subheader)
-    app.sidebar.selectbox[0].select("OBESITY").run()
+    app.selectbox(key="health_measure").select("OBESITY").run()
     assert app.query_params["measure"] == "OBESITY"
     app.run()
-    assert app.sidebar.selectbox[0].value == "OBESITY"
+    assert app.selectbox(key="health_measure").value == "OBESITY"
     app.selectbox(key="profile_county").set_value(None).run()
     assert "county" not in app.query_params
     assert not app.exception

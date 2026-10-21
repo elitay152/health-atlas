@@ -53,7 +53,7 @@ def test_app_download_cache_and_refresh_failure(tmp_path, monkeypatch):
     assert len(calls) == 1
     assert len(app.dataframe[0].value) == 3
     assert not app.text_input  # Visitors cannot replace the shared release.
-    app.sidebar.selectbox[0].select("OBESITY").run()
+    app.selectbox(key="health_measure").select("OBESITY").run()
     assert len(calls) == 1  # Widget interactions use cached SQL data.
     app.sidebar.button[0].click().run()
     assert len(calls) == 1
@@ -72,7 +72,7 @@ def test_app_download_cache_and_refresh_failure(tmp_path, monkeypatch):
     assert "Offline test" not in app.error[0].value
     assert "previously downloaded" in app.warning[0].value
     assert len(app.dataframe[0].value) == 3
-    app.sidebar.selectbox[0].select("DIABETES").run()
+    app.selectbox(key="health_measure").select("DIABETES").run()
     assert len(calls) == 3
 
 
