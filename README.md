@@ -49,6 +49,7 @@ Project structure:
 - `oregon_health/data.py`: data validation and parameterized DuckDB queries.
 - `oregon_health/import_data.py`: CDC download and source metadata.
 - `oregon_health/api_cache.py`: persistent API cache, expiry and refresh.
+- `oregon_health/map.py`: FIPS-based geometry joins and interactive map styling.
 - `tests/`: import, SQL and application interaction checks.
 
 ## First feature backlog
@@ -56,7 +57,7 @@ Project structure:
 - **Data coverage report:** show missing counties/measures and explain suppressed records.
 - **County profiles:** add a reusable SQL query and a single-county detail view.
 - **Age-adjusted comparisons:** import separately, expose an explicit estimate-type selector and document the difference.
-- **County map:** join boundaries using five-digit county FIPS and preserve attribution.
+- **Map-linked selection:** let clicking a county update the comparison control.
 - **Census integration:** join demographics by FIPS, with explicit source years and denominator checks.
 
 Keep the first release focused on county comparisons. Add Census data once the live CDC import and coverage checks pass.
@@ -64,3 +65,9 @@ Keep the first release focused on county comparisons. Add Census data once the l
 ## Security and deployment
 
 See [SECURITY.md](SECURITY.md) for security controls, known dependency findings and deployment recommendations. Bandit runs as the `bandit` GitHub Actions check; Dependabot checks Python and GitHub Actions updates weekly. Keep `test` required on main and add `bandit` after its first successful workflow run.
+
+## County map and visual theme
+
+The interactive Oregon map supports pan, zoom, and hover details with estimates and confidence intervals. Choose counties in the comparison control to outline them on the map and populate the chart/table. Light-to-dark teal represents lower-to-higher prevalence for the current measure/year; gray means no estimate, including counties outside the synthetic demo. The scale adjusts for each measure/year and is not suitable for comparing colors between measures.
+
+Boundaries are bundled locally, so deployment needs no map API key, tile provider or additional GIS network access. See [boundary provenance and licensing](assets/README.md). The app joins geography and CDC estimates by five-digit FIPS codes. The warm ivory/teal/copper theme is configured in `.streamlit/config.toml`.

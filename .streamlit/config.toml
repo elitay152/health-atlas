@@ -7,3 +7,13 @@ showErrorDetails = "none"
 
 [browser]
 gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#176B63"
+backgroundColor = "#F7F5EF"
+secondaryBackgroundColor = "#EAEDE5"
+textColor = "#233B35"
+font = "sans-serif"
+headingFont = "serif"
+chartCategoricalColors = ["#176B63", "#B86A40", "#5C7860", "#728A9E", "#AD8C50"]
