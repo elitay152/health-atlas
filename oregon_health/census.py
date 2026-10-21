@@ -12,6 +12,7 @@ import requests
 from oregon_health.api_cache import _reserve_refresh
 from oregon_health.data import DB_PATH
 from oregon_health.profile import county_names
+from oregon_health.status import record_refresh
 
 FIELDS = ["DP05_0001E", "DP05_0001M", "DP05_0024PE", "DP05_0024PM", "DP03_0128PE", "DP03_0128PM"]
 COLUMNS = ["population", "population_moe", "age65_pct", "age65_moe", "poverty_pct", "poverty_moe"]
@@ -135,12 +136,18 @@ def context(fips, year, cache_dir=None, api_key=None):
         stale = datetime.now(timezone.utc) - imported.replace(tzinfo=timezone.utc) >= CACHE_TTL
     warning = None
     if stale:
+        attempted = False
         try:
             if not (api_key or os.environ.get("CENSUS_API_KEY")):
+                record_refresh(path, year, "key_required")
                 raise CensusKeyRequired("A Census API key must be configured by the site maintainer.")
             _reserve_refresh(path)
+            attempted = True
             store(fetch(year, api_key=api_key), year, path)
+            record_refresh(path, year, "success")
         except (requests.RequestException, ValueError, KeyError, TypeError, duckdb.Error):
+            if attempted:
+                record_refresh(path, year, "failed")
             if not path.exists():
                 raise
             logging.getLogger(__name__).warning("Census refresh failed; using cached data", exc_info=True)

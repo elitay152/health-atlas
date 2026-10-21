@@ -9,6 +9,7 @@ import duckdb
 
 from oregon_health.data import DB_PATH, store
 from oregon_health.import_data import fetch
+from oregon_health.status import record_refresh
 
 DEFAULT_DATASET = "swc5-untb"
 CACHE_TTL = timedelta(hours=24)
@@ -47,5 +48,11 @@ def _reserve_refresh(path):
 def refresh(dataset, path=DB_PATH):
     """Limit all sources together; a failed download leaves the cache untouched."""
     _reserve_refresh(path)
-    rows, source = fetch(dataset)
-    return store(rows, source, path)
+    try:
+        rows, source = fetch(dataset)
+        count = store(rows, source, path)
+    except Exception:
+        record_refresh(path, dataset, "failed")
+        raise
+    record_refresh(path, dataset, "success")
+    return count
