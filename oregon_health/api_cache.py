@@ -7,7 +7,7 @@ import time
 
 import duckdb
 
-from oregon_health.data import DB_PATH, store
+from oregon_health.data import CATALOG, DB_PATH, store
 from oregon_health.import_data import fetch
 from oregon_health.status import record_refresh
 
@@ -20,8 +20,16 @@ class RefreshLimited(ValueError):
     """Another visitor recently reserved a refresh for this cache."""
 
 
+def catalog_is_current(path):
+    if not Path(path).exists():
+        return False
+    with duckdb.connect(str(path), read_only=True) as db:
+        columns = {row[1] for row in db.execute("PRAGMA table_info('provenance')").fetchall()}
+        return "catalog" in columns and db.execute("SELECT catalog FROM provenance").fetchone()[0] == CATALOG
+
+
 def needs_refresh(dataset, path=DB_PATH, now=None):
-    if not path.exists():
+    if not catalog_is_current(path):
         return True
     with duckdb.connect(str(path), read_only=True) as db:
         source, imported = db.execute("SELECT source, imported_at FROM provenance").fetchone()

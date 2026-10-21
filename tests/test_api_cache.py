@@ -18,7 +18,7 @@ def test_cache_refresh_expiry_and_failure_preservation(tmp_path, monkeypatch):
     clock = [1000.0]
     monkeypatch.setattr(api_cache.time, "time", lambda: clock[0])
     monkeypatch.setattr(api_cache, "fetch", lambda dataset: (data.demo_rows(), SOURCE))
-    assert api_cache.refresh(DATASET, path) == 9
+    assert api_cache.refresh(DATASET, path) == 27
     assert not api_cache.needs_refresh(DATASET, path)
     assert api_cache.needs_refresh("efgh-5678", path)
     assert api_cache.needs_refresh(DATASET, path, now=datetime.now(timezone.utc) + timedelta(days=2))
@@ -29,7 +29,7 @@ def test_cache_refresh_expiry_and_failure_preservation(tmp_path, monkeypatch):
     with pytest.raises(requests.ConnectionError):
         api_cache.refresh(DATASET, path)
     with duckdb.connect(str(path)) as db:
-        assert db.execute("SELECT count(*) FROM estimates").fetchone()[0] == 9
+        assert db.execute("SELECT count(*) FROM estimates").fetchone()[0] == 27
         assert db.execute("SELECT source FROM provenance").fetchone()[0] == SOURCE
 
 

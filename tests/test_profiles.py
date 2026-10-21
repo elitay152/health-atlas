@@ -17,7 +17,7 @@ def test_profile_queries_keep_years_and_counties_separate(tmp_path):
     store([*rows, extra], "synthetic test", path)
     with duckdb.connect(str(path)) as db:
         result = county_profile(db, "41051", 2022)
-        assert set(result.measure) == {"DIABETES", "CASTHMA", "OBESITY"}
+        assert set(result.measure) == {"DIABETES", "CASTHMA", "OBESITY", "DEPRESSION", "COPD", "CHD", "STROKE", "ARTHRITIS", "BPHIGH"}
         assert result[result.measure == "DIABETES"].prevalence.iloc[0] == 10
         assert len(county_profile(db, "41051", 2021)) == 1
         assert county_profile(db, "41001", 2022).empty

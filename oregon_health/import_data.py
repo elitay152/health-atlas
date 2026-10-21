@@ -4,7 +4,7 @@ import re
 
 import requests
 
-from oregon_health.data import store
+from oregon_health.data import MEASURES, store
 
 
 def fetch(dataset):
@@ -16,8 +16,9 @@ def fetch(dataset):
     title = response.json()["name"]
     if "places" not in title.lower() or "county" not in title.lower():
         raise ValueError(f"Expected a PLACES county dataset, received: {title}")
+    measure_ids = ", ".join(f"'{code}'" for code in MEASURES)
     response = requests.get(f"{base}/resource/{dataset}.json", params={
-        "$where": "stateabbr = 'OR' AND measureid IN ('DIABETES', 'CASTHMA', 'OBESITY') AND data_value_type = 'Crude prevalence'",
+        "$where": f"stateabbr = 'OR' AND measureid IN ({measure_ids}) AND data_value_type = 'Crude prevalence'",
         "$limit": 1000, "$offset": 0, "$order": ":id",
     }, timeout=(5, 30))
     response.raise_for_status()

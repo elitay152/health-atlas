@@ -21,7 +21,7 @@ def test_download_checks_metadata_and_filters(monkeypatch):
 
     monkeypatch.setattr(requests, "get", get)
     rows, source = fetch("abcd-1234")
-    assert len(rows) == 9
+    assert len(rows) == 27
     assert "Test Release" in source
     assert "stateabbr = 'OR'" in calls[1][1]["params"]["$where"]
     assert calls[1][1]["params"]["$offset"] == 0
