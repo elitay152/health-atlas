@@ -31,7 +31,7 @@ def test_comparison_links_roundtrip_and_profile_action(monkeypatch):
     view = app(monkeypatch, dict(compare="41039", county="41051", year="2022", measure="OBESITY", demo="1", census="1"))
     assert not view.exception
     assert view.multiselect[0].value == ["Lane"]
-    assert view.sidebar.selectbox[0].value == "OBESITY"
+    assert view.selectbox(key="health_measure").value == "OBESITY"
     assert view.checkbox[0].value is False
     assert view.query_params["census"] == "0"
     next(b for b in view.button if b.label == "Add county to comparison").click().run()
@@ -42,7 +42,7 @@ def test_comparison_links_roundtrip_and_profile_action(monkeypatch):
     assert not other.exception
     assert other.multiselect[0].value == ["Lane", "Multnomah"]
     assert other.selectbox(key="profile_county").value == "41051"
-    other.sidebar.selectbox[0].select("CASTHMA").run()
+    other.selectbox(key="health_measure").select("CASTHMA").run()
     other.run()
     assert other.query_params["measure"] == "CASTHMA"
     assert other.multiselect[0].value == ["Lane", "Multnomah"]
