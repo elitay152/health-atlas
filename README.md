@@ -50,14 +50,15 @@ Project structure:
 - `oregon_health/import_data.py`: CDC download and source metadata.
 - `oregon_health/api_cache.py`: persistent API cache, expiry and refresh.
 - `oregon_health/map.py`: FIPS-based geometry joins and interactive map styling.
+- `oregon_health/profile.py`: validation for county links and map selection events.
 - `tests/`: import, SQL and application interaction checks.
 
 ## First feature backlog
 
 - **Data coverage report:** show missing counties/measures and explain suppressed records.
-- **County profiles:** add a reusable SQL query and a single-county detail view.
+- **County context:** explain patterns using carefully sourced demographic context.
 - **Age-adjusted comparisons:** import separately, expose an explicit estimate-type selector and document the difference.
-- **Map-linked selection:** let clicking a county update the comparison control.
+- **Comparison links:** extend shared county links to preserve a multi-county comparison.
 - **Census integration:** join demographics by FIPS, with explicit source years and denominator checks.
 
 Keep the first release focused on county comparisons. Add Census data once the live CDC import and coverage checks pass.
@@ -71,3 +72,9 @@ See [SECURITY.md](SECURITY.md) for security controls, known dependency findings 
 The interactive Oregon map supports pan, zoom, and hover details with estimates and confidence intervals. Choose counties in the comparison control to outline them on the map and populate the chart/table. Light-to-dark teal represents lower-to-higher prevalence for the current measure/year; gray means no estimate, including counties outside the synthetic demo. The scale adjusts for each measure/year and is not suitable for comparing colors between measures.
 
 Boundaries are bundled locally, so deployment needs no map API key, tile provider or additional GIS network access. See [boundary provenance and licensing](assets/README.md). The app joins geography and CDC estimates by five-digit FIPS codes. The warm ivory/teal/copper theme is configured in `.streamlit/config.toml`.
+
+## County profiles and sharing
+
+Click a county on the map to open **County spotlight**, or use the keyboard-accessible **County profile** selector below the comparison. A profile shows diabetes, current asthma and obesity estimates with 95% confidence intervals for the selected estimate year. Missing measures say **Unavailable**; data from a different year is not silently substituted. **Add county to comparison** adds the county to the existing comparison when it has a record for the current map measure.
+
+Selecting a profile updates the browser URL. Copy it to share the county, year, current measure and explicit synthetic demo mode. For example, `?county=41051&year=2023&measure=DIABETES&demo=0` opens Multnomah County using real data. Links refer to the deployment's configured CDC release, not an immutable historical snapshot. Unknown county IDs are ignored with a warning, and unavailable year/measure options fall back to available data shown in the controls. Clearing the profile removes the county parameter.
