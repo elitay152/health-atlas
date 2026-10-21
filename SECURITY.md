@@ -35,3 +35,7 @@ Use managed HTTPS hosting, keep repository write access limited to collaborators
 The local cooldown limits CDC fetches, not browser connections, Streamlit reruns or a distributed denial-of-service attack. Use hosting traffic limits where available. Multiple replicas with separate disks need a shared limiter; each currently has an independent quota. Keep XSRF protection enabled behind proxies and configure proxy origins correctly rather than disabling it. Store future credentials in deployment secrets, never in source or public controls. Add authentication and an authorization review before adding private data or writable user features.
 
 For a suspected vulnerability, avoid posting credentials or exploit details in public issues; contact the repository maintainer privately or use GitHub private vulnerability reporting if enabled.
+
+## Census integration
+
+Census requests use a fixed HTTPS destination (`api.census.gov`), a bounded set of variable names and a validated year. Visitor links cannot change the destination or requested fields. Only Oregon counties are accepted, and a refresh requires all 36 expected county FIPS codes. Census cache files are separate from CDC data and are published as complete snapshots so failed updates preserve prior records. Each release shares the existing five-minute reservation mechanism, including failed requests. This remains a per-storage limiter, not a substitute for hosting-level traffic limits.
