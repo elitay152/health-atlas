@@ -58,7 +58,6 @@ Project structure:
 - **Data coverage report:** show missing counties/measures and explain suppressed records.
 - **County context:** explain patterns using carefully sourced demographic context.
 - **Age-adjusted comparisons:** import separately, expose an explicit estimate-type selector and document the difference.
-- **Comparison links:** extend shared county links to preserve a multi-county comparison.
 - **Census integration:** join demographics by FIPS, with explicit source years and denominator checks.
 
 Keep the first release focused on county comparisons. Add Census data once the live CDC import and coverage checks pass.
@@ -113,4 +112,14 @@ Choose **Include Census demographics** to load community context. It reuses the 
 
 Health cells show prevalence and **95% confidence intervals**. Census cells show **90% margins of error**, using `pp` for percentage points. The period column distinguishes the CDC estimate year from the ACS five-year period. Population, age and poverty do not all use the same denominator as adult health measures. These are descriptive comparisons; they do not establish causes or statistical significance.
 
-**Download full comparison CSV** exports one row per county/measure, preserving numeric values and FIPS identifiers. Fields include estimates, interval bounds or margins of error, units, confidence levels, source periods, population universes, source references, import dates and availability status. Reloading or sharing a county-profile link does not preserve a multi-county selection yet.
+**Download full comparison CSV** exports one row per county/measure, preserving numeric values and FIPS identifiers. Fields include estimates, interval bounds or margins of error, units, confidence levels, source periods, population universes, source references, import dates and availability status. The browser address preserves the full comparison state, including an optional open county profile.
+
+## Share a comparison
+
+Select counties in the desired order, choose a measure and estimate year, and optionally enable Census demographics. Copy the browser address to share that view. A fresh session restores the county order, measure, year, Census toggle and demo mode. An open county profile is included too. Empty county selections stay empty when reopened.
+
+Example: `?compare=41051,41039,41017&year=2023&measure=OBESITY&demo=0&census=1` compares Multnomah, Lane and Deschutes with Census context. Values use the deployment's current CDC release and matching-year Census cache; links are not immutable snapshots. Census loading on a shared link still needs a configured server-side key or cached data; no credentials are included in links.
+
+Comparison links are bounded to Oregon's 36 known FIPS codes, with duplicate codes removed. Unknown counties and counties without an estimate for the selected map measure/year are omitted with a notice. Unavailable years/measures fall back to available options with a notice. Demo mode always disables real Census loading. Older county-only links still work and use the normal initial three-county comparison. Changing between real/demo data resets the comparison to available defaults; the browser address then reflects the new selection.
+
+Only recognized view parameters are retained in the canonical address; unrelated parameters are removed. County IDs and user-supplied link values never become SQL text, destination URLs, cache paths or credentials.

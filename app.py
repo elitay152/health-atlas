@@ -13,6 +13,7 @@ from oregon_health.map import county_deck
 from oregon_health.profile import county_names, selected_county
 from oregon_health.census import CensusKeyRequired, context as census_context
 from oregon_health.compare import comparison_rows, display_table
+from oregon_health.links import parse_counties, link_params
 
 def open_map_profile():
     fips = selected_county(st.session_state.get("county_map", {}))
@@ -41,7 +42,9 @@ st.caption("OREGON / COMMUNITY HEALTH")
 st.title("Health Atlas")
 st.write("A closer look at the health of Oregon’s communities.")
 st.sidebar.header("Explore Oregon")
-use_demo = st.sidebar.toggle("Use synthetic demo data", value=st.query_params.get("demo") == "1")
+if "demo_mode" not in st.session_state:
+    st.session_state["demo_mode"] = st.query_params.get("demo") == "1"
+use_demo = st.sidebar.toggle("Use synthetic demo data", key="demo_mode")
 with st.sidebar.expander("CDC data source"):
     dataset = os.environ.get("CDC_PLACES_DATASET", DEFAULT_DATASET)
     st.text(f"Dataset: {dataset}")
@@ -81,14 +84,25 @@ else:
 with duckdb.connect(str(path), read_only=True) as db:
     requested_measure = st.query_params.get("measure")
     measures = list(MEASURES)
-    measure = st.sidebar.selectbox("Health measure", measures, index=measures.index(requested_measure) if requested_measure in measures else 0, format_func=MEASURES.get)
+    if "health_measure" not in st.session_state:
+        st.session_state["health_measure"] = requested_measure if requested_measure in measures else measures[0]
+        if requested_measure and requested_measure not in measures:
+            st.warning("The linked health measure is unavailable. Showing the measure selected below.")
+    measure = st.sidebar.selectbox("Health measure", measures, format_func=MEASURES.get, key="health_measure")
     years = [row[0] for row in db.execute("SELECT DISTINCT year FROM estimates WHERE measure = ? ORDER BY year DESC", [measure]).fetchall()]
     if not years:
         st.info("No estimates are available for this measure. Try another measure.")
         st.stop()
     requested_year = st.query_params.get("year", "")
     default_year = next((i for i, value in enumerate(years) if str(value) == requested_year), 0)
-    year = st.sidebar.selectbox("Estimate year", years, index=default_year)
+    if "estimate_year" not in st.session_state:
+        st.session_state["estimate_year"] = years[default_year]
+        if requested_year and requested_year not in {str(value) for value in years}:
+            st.warning("The linked estimate year is unavailable. Showing the year selected below.")
+    elif st.session_state["estimate_year"] not in years:
+        st.session_state["estimate_year"] = years[0]
+        st.warning("The previous year is unavailable for this measure. Showing the latest available year.")
+    year = st.sidebar.selectbox("Estimate year", years, key="estimate_year")
     frame = comparison(db, measure, year)
     st.subheader(f"{MEASURES[measure]} · {year}")
     st.caption("Modeled adult crude prevalence · Estimate year, not release year · County comparisons reflect age differences")
@@ -99,7 +113,13 @@ with duckdb.connect(str(path), read_only=True) as db:
         stats[2].metric("Highest county estimate", f"{frame.prevalence.max():.1f}%", border=True)
     options = sorted(frame.county)
     comparison_source = (use_demo, dataset)
-    if "compare_counties" not in st.session_state or st.session_state.get("comparison_source") != comparison_source:
+    if "compare_counties" not in st.session_state:
+        requested_codes, invalid = parse_counties(st.query_params.get("compare"))
+        available_names = dict(zip(frame.fips, frame.county))
+        st.session_state["compare_counties"] = options[:3] if requested_codes is None else [available_names[code] for code in requested_codes if code in available_names]
+        if invalid or (requested_codes is not None and any(code not in available_names for code in requested_codes)):
+            st.warning("Some linked counties are invalid or have no estimate for this measure and year; they were omitted.")
+    elif st.session_state.get("comparison_source") != comparison_source:
         st.session_state["compare_counties"] = options[:3]
     else:
         st.session_state["compare_counties"] = [c for c in st.session_state["compare_counties"] if c in options]
@@ -127,7 +147,11 @@ with duckdb.connect(str(path), read_only=True) as db:
     st.divider()
     st.markdown("### Compare the whole picture")
     st.caption("The counties selected above, across all three health measures and community demographics.")
-    include_census = st.checkbox("Include Census demographics", disabled=use_demo, help="Uses the cached ACS release when available. The first load may need a Census request.")
+    if "include_census" not in st.session_state:
+        st.session_state["include_census"] = st.query_params.get("census") == "1" and not use_demo
+    if use_demo:
+        st.session_state["include_census"] = False
+    include_census = st.checkbox("Include Census demographics", key="include_census", disabled=use_demo, help="Uses the cached ACS release when available. The first load may need a Census request.")
     if not selected:
         st.info("Choose counties above to build a side-by-side comparison.")
     else:
@@ -162,6 +186,7 @@ with duckdb.connect(str(path), read_only=True) as db:
             census_source = next(iter(contexts.values()))
             st.caption(f"Demographics source: [ACS {year - 4}–{year} five-year estimates]({census_source['source']}). Download includes each county’s import date.")
         st.download_button("Download full comparison CSV", rows.to_csv(index=False), "health-atlas-county-comparison.csv", "text/csv")
+    st.caption("Copy your browser’s address to share these counties and view settings. Links use the site’s current data release.")
     st.divider()
     st.markdown("### County spotlight")
     st.caption("Click the map or choose a county to explore all three health measures.")
@@ -173,7 +198,6 @@ with duckdb.connect(str(path), read_only=True) as db:
             st.warning("That county link is not a recognized Oregon county. Choose a county below.")
     fips = st.selectbox("County profile", list(names), format_func=lambda value: f"{names[value]} County", index=None, placeholder="Choose an Oregon county", key="profile_county")
     if fips:
-        st.query_params.update(county=fips, year=str(year), measure=measure, demo="1" if use_demo else "0")
         st.subheader(f"{names[fips]} County")
         st.caption(f"{year} estimates · Modeled adult crude prevalence")
         profile = county_profile(db, fips, year)
@@ -219,8 +243,8 @@ with duckdb.connect(str(path), read_only=True) as db:
         if names[fips] not in options:
             st.caption("This county has no estimate for the current map measure, so it cannot be added to that comparison.")
         st.caption("Copy the address in your browser to share this county profile. Links preserve the measure, estimate year, and demo mode; they use the deployment’s current CDC release.")
-    elif "county" in st.query_params:
-        del st.query_params["county"]
+    selected_fips = dict(zip(frame.county, frame.fips))
+    st.query_params.from_dict(link_params([selected_fips[name] for name in selected], year, measure, use_demo, include_census, fips))
     source, imported = db.execute("SELECT source, imported_at FROM provenance").fetchone()
     st.caption(f"Source: {source} · Imported: {imported} UTC")
 st.info("PLACES estimates are modeled population measures, not individual diagnoses. Crude estimates reflect differences in age composition; use caution comparing counties. Differences and associations do not establish causes. Consult confidence intervals and CDC methodology before interpreting results.")
