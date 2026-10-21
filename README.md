@@ -95,7 +95,7 @@ Census API requests are restricted to Oregon (`state:41`, `county:*`), require t
 
 The app fetches the statewide Census release only when a real-data county profile is opened. It caches a complete snapshot in `data/census_{year}.duckdb` for 30 days, then refreshes on access. Separate county profiles reuse that same release. Failed attempts share the existing five-minute cooldown per Census release, and failed refreshes retain old snapshots with an explicit warning. A failed first fetch leaves the health profile usable with an unavailable-context message. Synthetic mode does not fetch or display real demographics.
 
-Hosting must allow outbound HTTPS to **api.census.gov** as well as **data.cdc.gov**. Live metadata access is verified, including estimate meanings and margin-of-error attributes. The data endpoint currently redirects anonymous requests to Census’s “Missing Key” page, so a Census API key is required. Full live county-data validation remains pending until a key is configured. Unit and UI checks use synthetic Census fixtures and do not establish that authenticated data downloads work.
+Hosting must allow outbound HTTPS to **api.census.gov** as well as **data.cdc.gov**. Live metadata access is verified, including estimate meanings and margin-of-error attributes. The data endpoint currently redirects anonymous requests to Census’s “Missing Key” page, so a Census API key is required. After a key was configured, the 2023 Census release was validated live for all 36 Oregon counties. Multnomah County returned population 803,863, age 65+ share 14.4%, and poverty share 12.5%. Unit and UI tests use synthetic fixtures so CI does not require credentials or network access.
 
 ### Configure the Census API key
 
@@ -104,3 +104,13 @@ Request a key from https://api.census.gov/data/key_signup.html. Store it as `CEN
 For this Codex cloud environment, a `CENSUS_API_KEY` secret requirement with destination `api.census.gov` is saved in environment settings. Enter the value securely there, save and publish to enable live validation in this runtime. Streamlit deployment secrets and Codex environment secrets are separate configurations. Anonymous CDC PLACES access is unaffected.
 
 The key is only sent to the fixed Census HTTPS data endpoint, as its required `key` query parameter. Requests do not follow redirects, and request exceptions are replaced with safe errors so credential-bearing request URLs do not reach application logs or the browser. Missing-key errors do not consume a refresh reservation; cached Census data remains usable without a new request.
+
+## Side-by-side county comparison
+
+**Compare the whole picture** uses the counties selected above the map to display all three health measures plus population, age 65+ share and poverty in one table. Estimates are joined by county FIPS, not names, and restricted to the selected health-estimate year. The comparison preserves county selection order. Missing/suppressed values are **Unavailable**, never zero; Census values are **Not loaded** until explicitly requested.
+
+Choose **Include Census demographics** to load community context. It reuses the statewide Census cache used by county profiles; no extra request is needed per county when that cache is fresh. Census loading is opt-in to keep the initial map fast. A missing key or failed request leaves the health comparison usable, and previously cached demographics carry a stale-data warning. Synthetic mode never loads real demographics.
+
+Health cells show prevalence and **95% confidence intervals**. Census cells show **90% margins of error**, using `pp` for percentage points. The period column distinguishes the CDC estimate year from the ACS five-year period. Population, age and poverty do not all use the same denominator as adult health measures. These are descriptive comparisons; they do not establish causes or statistical significance.
+
+**Download full comparison CSV** exports one row per county/measure, preserving numeric values and FIPS identifiers. Fields include estimates, interval bounds or margins of error, units, confidence levels, source periods, population universes, source references, import dates and availability status. Reloading or sharing a county-profile link does not preserve a multi-county selection yet.
