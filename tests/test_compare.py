@@ -25,7 +25,7 @@ def test_comparison_preserves_geography_year_missing_and_uncertainty(tmp_path):
     contexts = {fips: context(fips, 2022) for fips in ["41039", "41051"]}
     with duckdb.connect(str(path), read_only=True) as db:
         result = comparison_rows(db, ["41039", "41051"], 2022, "Synthetic source", "2026-01-01", contexts)
-        assert len(result) == 12
+        assert len(result) == 24
         assert result[(result.fips == "41039") & (result.metric == "Current asthma")].status.iloc[0] == "unavailable"
         assert result[(result.fips == "41051") & (result.metric == "Diabetes")].estimate.iloc[0] == 10
         assert result[result.metric == "Below poverty level"].status.eq("unavailable").all()

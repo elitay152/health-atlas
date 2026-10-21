@@ -10,7 +10,7 @@ from oregon_health.data import comparison, demo_rows, normalize, store
 def test_import_queries_and_repeatability(tmp_path):
     path = tmp_path / "health.duckdb"
     for _ in range(2):
-        assert store(demo_rows(), "synthetic test", path) == 9
+        assert store(demo_rows(), "synthetic test", path) == 27
     with duckdb.connect(str(path)) as db:
         frame = comparison(db, "DIABETES", 2022)
         assert list(frame.county) == ["Clackamas", "Lane", "Multnomah"]
@@ -26,7 +26,7 @@ def test_invalid_import_preserves_database(tmp_path):
     with pytest.raises(ValueError):
         store(rows, "invalid", path)
     with duckdb.connect(str(path)) as db:
-        assert db.execute("SELECT count(*) FROM estimates").fetchone()[0] == 9
+        assert db.execute("SELECT count(*) FROM estimates").fetchone()[0] == 27
         assert db.execute("SELECT source FROM provenance").fetchone()[0] == "original"
 
 
@@ -35,7 +35,7 @@ def test_missing_and_filtered_records():
     rows[0]["data_value"] = None
     rows[1]["stateabbr"] = "WA"
     rows[2]["data_value_type"] = "Age-adjusted prevalence"
-    assert len(normalize(rows)) == 6
+    assert len(normalize(rows)) == 24
     with pytest.raises(ValueError, match="Duplicate"):
         normalize(demo_rows() * 2)
 

@@ -6,7 +6,7 @@ import duckdb
 import streamlit as st
 import requests
 
-from oregon_health.api_cache import DEFAULT_DATASET, RefreshLimited, needs_refresh, refresh
+from oregon_health.api_cache import DEFAULT_DATASET, RefreshLimited, catalog_is_current, needs_refresh, refresh
 
 from oregon_health.data import DB_PATH, MEASURES, comparison, county_profile, demo_rows, store
 from oregon_health.map import county_deck
@@ -15,6 +15,7 @@ from oregon_health.census import CensusKeyRequired, context as census_context
 from oregon_health.compare import comparison_rows, display_table
 from oregon_health.links import parse_counties, link_params
 from oregon_health.status_ui import render_data_status
+from oregon_health.charts import intervals, distribution, condition_profile, heatmap
 
 def open_map_profile():
     fips = selected_county(st.session_state.get("county_map", {}))
@@ -76,7 +77,7 @@ if not use_demo:
 if use_demo:
     st.warning("DEMO — synthetic values for three counties. These are not CDC estimates and must not be used for health decisions.")
     demo_path = Path(__file__).resolve().parent / "data" / "demo.duckdb"
-    if not demo_path.exists():
+    if not catalog_is_current(demo_path):
         store(demo_rows(), "Synthetic demo fixture — not CDC data", demo_path)
     path = demo_path
 else:
@@ -89,12 +90,19 @@ else:
 with duckdb.connect(str(path), read_only=True) as db:
     measure_column, year_column = st.columns([2, 1])
     requested_measure = st.query_params.get("measure")
-    measures = list(MEASURES)
+    available_measures = {row[0] for row in db.execute("SELECT DISTINCT measure FROM estimates").fetchall()}
+    measures = [code for code in MEASURES if code in available_measures]
+    if not measures:
+        st.info("No supported health measures are loaded. Check Data status or refresh the source.")
+        st.stop()
     if "health_measure" not in st.session_state:
         st.session_state["health_measure"] = requested_measure if requested_measure in measures else measures[0]
         if requested_measure and requested_measure not in measures:
             st.warning("The linked health measure is unavailable. Showing the measure selected below.")
-    measure = measure_column.selectbox("Health measure", measures, format_func=MEASURES.get, key="health_measure")
+    elif st.session_state["health_measure"] not in measures:
+        st.session_state["health_measure"] = measures[0]
+        st.warning("The selected measure is unavailable in this snapshot. Showing an available measure.")
+    measure = measure_column.selectbox("Health measure", measures, format_func=MEASURES.get, key="health_measure", help="Modeled adult prevalence from CDC PLACES. COPD means chronic obstructive pulmonary disease.")
     years = [row[0] for row in db.execute("SELECT DISTINCT year FROM estimates WHERE measure = ? ORDER BY year DESC", [measure]).fetchall()]
     if not years:
         st.info("No estimates are available for this measure. Try another measure.")
@@ -147,8 +155,11 @@ with duckdb.connect(str(path), read_only=True) as db:
         if visible.empty:
             st.info("Select at least one county to display a comparison.")
         else:
-            st.bar_chart(visible.set_index("county")[["prevalence"]], y_label="Estimated prevalence (%)", color="#176B63", height=360)
-            st.caption("Open the estimate table below for 95% confidence intervals.")
+            st.altair_chart(intervals(visible), width="stretch")
+            st.caption("Dots are estimates; lines are 95% confidence intervals. Overlap is not a significance test.")
+        st.markdown("#### Across Oregon")
+        st.altair_chart(distribution(frame), width="stretch")
+        st.caption("One observation per county. Dashed line: county median, not population-weighted statewide prevalence.")
     if not visible.empty:
         with st.expander("Compare estimates & download", expanded=False):
             st.dataframe(visible.drop(columns="fips").rename(columns={"county": "County", "prevalence": "Estimate (%)", "low": "95% CI lower (%)", "high": "95% CI upper (%)"}), hide_index=True)
@@ -166,16 +177,21 @@ with duckdb.connect(str(path), read_only=True) as db:
     if fips:
         st.subheader(f"{names[fips]} County")
         st.caption(f"{year} estimates · Modeled adult crude prevalence")
+        st.caption("Three familiar measures at a glance; the chart below includes every available condition.")
         profile = county_profile(db, fips, year)
         records = {row.measure: row for row in profile.itertuples()}
         cards = st.columns(3)
-        for card, (code, label) in zip(cards, MEASURES.items()):
+        for card, (code, label) in zip(cards, list(MEASURES.items())[:3]):
             with card.container(border=True):
                 row = records.get(code)
                 st.metric(label, f"{row.prevalence:.1f}%" if row is not None else "Unavailable")
                 st.caption(f"95% CI: {row.low:.1f}%–{row.high:.1f}%" if row is not None else "No estimate for this county and year.")
         if profile.empty:
             st.info("No estimates are available for this county in the selected year. Missing values are not zero.")
+        if not profile.empty:
+            st.markdown("#### Conditions at a glance")
+            st.altair_chart(condition_profile(profile), width="stretch")
+            st.caption("Dots: estimates · Lines: 95% confidence intervals. Conditions can overlap; percentages do not add to 100%. Missing conditions are omitted, not treated as zero.")
         st.markdown("#### Community context")
         if use_demo:
             st.info("Census demographics are available in real-data mode. No real Census values are mixed into this synthetic demo.")
@@ -214,7 +230,7 @@ with duckdb.connect(str(path), read_only=True) as db:
         st.markdown("[View comparison ↓](#county-comparison) · [Back to map ↑](#county-map)")
     st.divider()
     st.subheader("Compare the whole picture", anchor="county-comparison")
-    st.caption("The counties selected above, across all three health measures and community demographics.")
+    st.caption("The counties selected above, across nine health conditions and community demographics.")
     if "include_census" not in st.session_state:
         st.session_state["include_census"] = st.query_params.get("census") == "1" and not use_demo
     if use_demo:
@@ -244,6 +260,9 @@ with duckdb.connect(str(path), read_only=True) as db:
                 st.info("Some Census demographics are unavailable. Health comparisons remain available.")
         comparison_source, comparison_imported = db.execute("SELECT source, imported_at FROM provenance").fetchone()
         rows = comparison_rows(db, codes, year, comparison_source, comparison_imported, contexts, demo=use_demo)
+        st.markdown("#### Condition patterns")
+        st.altair_chart(heatmap(rows), width="stretch")
+        st.caption("Absolute prevalence, not a health grade or combined risk score. Conditions can overlap. Gray/— means no estimate. Hover for 95% intervals. The heatmap shows the first three selected counties; the table and CSV include all selected counties.")
         st.dataframe(display_table(rows), hide_index=True, key="full_comparison")
         with st.expander("How to read the comparison"):
             st.caption("Health: adult crude prevalence with 95% confidence intervals in parentheses. Census: five-year estimates with 90% margins of error (±); pp means percentage points. Different periods and population definitions are not directly interchangeable. These comparisons are descriptive and do not establish causes or statistical significance.")

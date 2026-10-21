@@ -42,7 +42,7 @@ def test_status_is_persistent_and_keeps_failure_separate_from_coverage(tmp_path,
     assert last_refresh(path, "efgh-5678") is None
     report = health_report(path, 2022, "abcd-1234")
     assert report["loaded"] and report["event"]["outcome"] == "failed"
-    assert report["coverage"]["Available counties"].tolist() == [3, 3, 3]
+    assert report["coverage"]["Available counties"].tolist() == [3] * 9
     assert "private diagnostic" not in str(last_refresh(path, "abcd-1234"))
     failed_event = last_refresh(path, "abcd-1234")
     with pytest.raises(api_cache.RefreshLimited):
@@ -51,7 +51,7 @@ def test_status_is_persistent_and_keeps_failure_separate_from_coverage(tmp_path,
     original_clock = api_cache.time.time
     monkeypatch.setattr(api_cache.time, "time", lambda: original_clock() + 301)
     monkeypatch.setattr(api_cache, "fetch", lambda dataset: (data.demo_rows(), "Fresh source"))
-    assert api_cache.refresh("abcd-1234", path) == 9
+    assert api_cache.refresh("abcd-1234", path) == 27
     assert last_refresh(path, "abcd-1234")["outcome"] == "success"
     empty = health_report(tmp_path / "missing.duckdb", 2022, "abcd-1234")
     assert not empty["loaded"] and empty["coverage"].empty

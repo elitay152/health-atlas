@@ -4,7 +4,12 @@ from pathlib import Path
 
 import duckdb
 
-MEASURES = {"DIABETES": "Diabetes", "CASTHMA": "Current asthma", "OBESITY": "Obesity"}
+MEASURES = {
+    "DIABETES": "Diabetes", "CASTHMA": "Current asthma", "OBESITY": "Obesity",
+    "DEPRESSION": "Depression", "COPD": "COPD", "CHD": "Coronary heart disease",
+    "STROKE": "Stroke", "ARTHRITIS": "Arthritis", "BPHIGH": "High blood pressure",
+}
+CATALOG = ",".join(MEASURES)
 DB_PATH = Path(__file__).resolve().parents[1] / "data" / "oregon.duckdb"
 
 
@@ -46,8 +51,8 @@ def store(rows, source, path=DB_PATH):
         db.execute("BEGIN")
         db.execute("CREATE OR REPLACE TABLE estimates (fips VARCHAR, county VARCHAR, measure VARCHAR, year INTEGER, prevalence DOUBLE, low DOUBLE, high DOUBLE, PRIMARY KEY (fips, measure, year))")
         db.executemany("INSERT INTO estimates VALUES (?, ?, ?, ?, ?, ?, ?)", records)
-        db.execute("CREATE OR REPLACE TABLE provenance (source VARCHAR, imported_at TIMESTAMP)")
-        db.execute("INSERT INTO provenance VALUES (?, current_timestamp)", [source])
+        db.execute("CREATE OR REPLACE TABLE provenance (source VARCHAR, imported_at TIMESTAMP, catalog VARCHAR)")
+        db.execute("INSERT INTO provenance VALUES (?, current_timestamp, ?)", [source, CATALOG])
         db.execute("COMMIT")
     return len(records)
 
@@ -64,7 +69,7 @@ def demo_rows():
     """Deliberately synthetic fixtures, never a substitute for CDC data."""
     rows = []
     for fips, county, offset in [("41051", "Multnomah", 0), ("41039", "Lane", 1), ("41005", "Clackamas", 2)]:
-        for measure, base in [("DIABETES", 10), ("CASTHMA", 12), ("OBESITY", 30)]:
+        for measure, base in [("DIABETES", 10), ("CASTHMA", 12), ("OBESITY", 30), ("DEPRESSION", 23), ("COPD", 6), ("CHD", 5), ("STROKE", 3), ("ARTHRITIS", 28), ("BPHIGH", 32)]:
             value = base + offset
             rows.append(dict(stateabbr="OR", locationid=fips, locationname=county,
                              measureid=measure, year="2022", data_value_type="Crude prevalence",
@@ -77,6 +82,6 @@ def county_profile(db, fips, year):
     return db.execute("""
         SELECT measure, prevalence, low, high
         FROM estimates
-        WHERE fips = ? AND year = ? AND measure IN ('DIABETES', 'CASTHMA', 'OBESITY')
+        WHERE fips = ? AND year = ? AND measure IN (SELECT unnest(?::VARCHAR[]))
         ORDER BY measure
-    """, [fips, year]).df()
+    """, [fips, year, list(MEASURES)]).df()

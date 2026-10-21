@@ -1,6 +1,6 @@
 # Health Atlas
 
-A shared Python and SQL project exploring county health in Oregon. The first version compares diabetes, current asthma, and obesity prevalence with CDC PLACES county estimates.
+A shared Python and SQL project exploring county health in Oregon. It compares nine adult health conditions using CDC PLACES county estimates.
 
 ## Run locally
 
@@ -15,9 +15,9 @@ Run commands from the repository root. If your home directory is read-only, set 
 
 ## CDC API source
 
-The app starts with dataset ID `swc5-untb`. Live API validation confirmed this is the 2025 county release and returned 108 crude-prevalence estimates: three measures for all 36 Oregon counties. The maintainer can set `CDC_PLACES_DATASET` before starting the app. Visitors can view the configured ID but cannot change the shared dataset. The importer checks the source title and expected fields before writing data; verify the returned release title and county coverage before interpreting results. A dataset ID selects a specific release rather than silently following an unspecified latest release.
+The app starts with dataset ID `swc5-untb`. Live API validation confirmed this is the 2025 county release and returned 324 crude-prevalence estimates: nine measures for all 36 Oregon counties. The maintainer can set `CDC_PLACES_DATASET` before starting the app. Visitors can view the configured ID but cannot change the shared dataset. The importer checks the source title and expected fields before writing data; verify the returned release title and county coverage before interpreting results. A dataset ID selects a specific release rather than silently following an unspecified latest release.
 
-Requests go from the Python server to `https://data.cdc.gov`, not from the browser. Hosting must permit outbound HTTPS to that domain. Anonymous requests are sufficient for this small Oregon query; no token or secret setup is required. Changing county/measure selections queries DuckDB without another API request. Refresh reservations are persisted in `data/.refresh.sqlite3` and shared across sessions and processes using the same data directory. Separate hosting replicas need a shared rate limiter; this local limit is not an edge traffic control. The importer rejects responses of 1,000 or more records, well above the 108 expected for this release. A failed automatic refresh is attempted only once per source per session; **Refresh data** retries after the shared cooldown. Failed attempts count toward the cooldown to prevent repeated requests during outages.
+Requests go from the Python server to `https://data.cdc.gov`, not from the browser. Hosting must permit outbound HTTPS to that domain. Anonymous requests are sufficient for this small Oregon query; no token or secret setup is required. Changing county/measure selections queries DuckDB without another API request. Refresh reservations are persisted in `data/.refresh.sqlite3` and shared across sessions and processes using the same data directory. Separate hosting replicas need a shared rate limiter; this local limit is not an edge traffic control. The importer rejects responses of 1,000 or more records, above the 324 expected for this release. A failed automatic refresh is attempted only once per source per session; **Refresh data** retries after the shared cooldown. Failed attempts count toward the cooldown to prevent repeated requests during outages.
 
 ## Optional command-line import
 
@@ -29,7 +29,7 @@ Requests go from the Python server to `https://data.cdc.gov`, not from the brows
 uv run python -m oregon_health.import_data --dataset YOUR_DATASET_ID
 ```
 
-The importer verifies the dataset title, requests only Oregon crude-prevalence records for the three measures, validates FIPS codes, duplicates and confidence intervals, and transactionally replaces `data/oregon.duckdb`. Network/validation failures preserve the existing database. Repeating an import replaces rather than appends estimates. The app uses the imported database when demo mode is off; select the same dataset ID to reuse this cache.
+The importer verifies the dataset title, requests only Oregon crude-prevalence records for the nine measures, validates FIPS codes, duplicates and confidence intervals, and transactionally replaces `data/oregon.duckdb`. Network/validation failures preserve the existing database. Repeating an import replaces rather than appends estimates. The app uses the imported database when demo mode is off; select the same dataset ID to reuse this cache.
 
 Required source fields: `stateabbr`, `locationid`, `locationname`, `measureid`, `year`, `data_value_type`, `data_value`, `low_confidence_limit`, `high_confidence_limit`. Missing estimates are omitted, not converted to zero. The interface displays available county counts; verify expected coverage (Oregon has 36 counties) when reviewing a release. The source title, URL and import timestamp are stored in `provenance`; estimate years are kept separately from release titles.
 
@@ -74,7 +74,7 @@ Boundaries are bundled locally, so deployment needs no map API key, tile provide
 
 ## County profiles and sharing
 
-Click a county on the map to open **County spotlight**, or use the keyboard-accessible **County profile** selector immediately below the map. A profile shows diabetes, current asthma and obesity estimates with 95% confidence intervals for the selected estimate year. Missing measures say **Unavailable**; data from a different year is not silently substituted. **Add county to comparison** adds the county to the existing comparison when it has a record for the current map measure.
+Click a county on the map to open **County spotlight**, or use the keyboard-accessible **County profile** selector immediately below the map. A profile shows three headline estimates plus a chart covering all nine conditions, with 95% confidence intervals for the selected estimate year. Missing measures say **Unavailable**; data from a different year is not silently substituted. **Add county to comparison** adds the county to the existing comparison when it has a record for the current map measure.
 
 Selecting a profile updates the browser URL. Copy it to share the county, year, current measure and explicit synthetic demo mode. For example, `?county=41051&year=2023&measure=DIABETES&demo=0` opens Multnomah County using real data. Links refer to the deployment's configured CDC release, not an immutable historical snapshot. Unknown county IDs are ignored with a warning, and unavailable year/measure options fall back to available data shown in the controls. Clearing the profile removes the county parameter.
 
@@ -106,7 +106,7 @@ The key is only sent to the fixed Census HTTPS data endpoint, as its required `k
 
 ## Side-by-side county comparison
 
-**Compare the whole picture** uses the counties selected above the map to display all three health measures plus population, age 65+ share and poverty in one table. Estimates are joined by county FIPS, not names, and restricted to the selected health-estimate year. The comparison preserves county selection order. Missing/suppressed values are **Unavailable**, never zero; Census values are **Not loaded** until explicitly requested.
+**Compare the whole picture** uses the counties selected above the map to display all nine health measures plus population, age 65+ share and poverty in one table. Estimates are joined by county FIPS, not names, and restricted to the selected health-estimate year. The comparison preserves county selection order. Missing/suppressed values are **Unavailable**, never zero; Census values are **Not loaded** until explicitly requested.
 
 Choose **Include Census demographics** to load community context. It reuses the statewide Census cache used by county profiles; no extra request is needed per county when that cache is fresh. Census loading is opt-in to keep the initial map fast. A missing key or failed request leaves the health comparison usable, and previously cached demographics carry a stale-data warning. Synthetic mode never loads real demographics.
 
@@ -141,3 +141,25 @@ Measure and year filters are on the main page, above the map, so they remain acc
 The page follows **map → county profile → comparison**. Clicking a county exposes a **View county profile** link below the map. The profile's add button updates the comparison; **View comparison** and **Back to map** links connect the steps. Shared comparison/profile links retain the same state as before.
 
 Longer map attribution, methodology and interpretation notes are in labeled expanders. Confidence intervals, margins of error, source periods, missing-value messages and refresh warnings remain available. Source import timestamps are consolidated in the data-status panel. Navigation does not add network requests or change estimates.
+
+## Expanded conditions and charts
+
+The 2025 CDC PLACES county release was checked live for these curated crude-prevalence measures. All nine have 2023 estimates for all 36 Oregon counties (324 records):
+
+| Measure ID | Display name |
+| --- | --- |
+| DIABETES | Diabetes |
+| CASTHMA | Current asthma |
+| OBESITY | Obesity |
+| DEPRESSION | Depression |
+| COPD | COPD |
+| CHD | Coronary heart disease |
+| STROKE | Stroke |
+| ARTHRITIS | Arthritis |
+| BPHIGH | High blood pressure |
+
+All are modeled adult prevalence estimates. Consult CDC's measure definitions and methodology for diagnosis/survey wording; these are not individual diagnoses or measurements taken by this app. Different conditions can overlap. Their percentages do not add to 100%, and the app does not create a combined risk score or health grade. Other PLACES measures with different age groups, denominators or years were not automatically mixed into this catalog.
+
+The comparison beside the map now uses dots for estimates and lines for 95% confidence intervals. A county histogram adds a dashed county-median line: each county has equal weight, so this is not a population-weighted Oregon estimate. County profiles include an interval chart for all available conditions. The full comparison adds a prevalence heatmap with a fixed 0–100% color scale, numeric labels, and interval tooltips. Gray/— means unavailable, never zero. For legibility the heatmap shows the first three selected counties; the table and CSV keep every selected county. Confidence intervals and overlap alone do not establish statistical significance.
+
+Refreshes record a catalog signature in the health snapshot. A cache created before this expansion triggers the existing bounded refresh workflow even if it is under 24 hours old. Failed upgrades keep the prior snapshot usable; the measure picker only offers measures present in that snapshot, and coverage reporting shows gaps. Older releases need not support every catalog measure. Demo fixtures cover nine synthetic conditions for three counties. No dependency declarations, cache files or imported data need manual edits to upgrade.
