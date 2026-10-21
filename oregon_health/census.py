@@ -62,20 +62,45 @@ def normalize(payload):
     return records
 
 
-def fetch(year):
-    url = release_url(year)
-    # Confirm variable meanings for this release; row numbers can change over time.
-    response = requests.get(f"{url}/variables.json", timeout=(5, 30))
-    response.raise_for_status()
-    variables = response.json()["variables"]
+class CensusUnavailable(ValueError):
+    """Public-safe API failure that never includes credential-bearing URLs."""
+
+
+class CensusKeyRequired(CensusUnavailable):
+    """The deployment needs a Census API key."""
+
+
+def _get_json(url, params=None):
+    try:
+        response = requests.get(url, params=params, timeout=(5, 30), allow_redirects=False)
+        response.raise_for_status()
+        if 300 <= response.status_code < 400:
+            raise CensusUnavailable("Census rejected the request; check API access and key configuration.")
+        return response.json()
+    except requests.RequestException:
+        # Requests exceptions may contain ?key=...; do not retain their chain.
+        raise CensusUnavailable("Census request failed; check API access and key configuration.") from None
+
+
+def validate_variables(variables):
     expected = {"DP05_0001E": "Total population", "DP05_0024PE": "65 years and over", "DP03_0128PE": "All people"}
-    if any(field not in variables for field in FIELDS) or any(
-        not variables[field]["label"].endswith(label) for field, label in expected.items()
-    ):
-        raise ValueError("ACS variable definitions differ from the expected population, age and poverty measures")
-    response = requests.get(url, params={"get": ",".join(["NAME", *FIELDS]), "for": "county:*", "in": "state:41"}, timeout=(5, 30))
-    response.raise_for_status()
-    return normalize(response.json())
+    for estimate, label in expected.items():
+        metadata = variables.get(estimate, {})
+        margin = estimate[:-1] + "M"
+        attributes = metadata.get("attributes", "").split(",")
+        if not metadata.get("label", "").endswith(label) or (margin not in variables and margin not in attributes):
+            raise ValueError("ACS variable definitions differ from the expected population, age and poverty measures")
+
+
+def fetch(year, api_key=None):
+    url = release_url(year)
+    key = api_key if api_key is not None else os.environ.get("CENSUS_API_KEY")
+    if not key:
+        raise CensusKeyRequired("A Census API key must be configured by the site maintainer.")
+    # MOEs are often attributes of estimates, not top-level variable entries.
+    validate_variables(_get_json(f"{url}/variables.json")["variables"])
+    payload = _get_json(url, params={"get": ",".join(["NAME", *FIELDS]), "for": "county:*", "in": "state:41", "key": key})
+    return normalize(payload)
 
 
 def store(records, year, path):
@@ -97,7 +122,7 @@ def store(records, year, path):
         temp.unlink(missing_ok=True)
 
 
-def context(fips, year, cache_dir=None):
+def context(fips, year, cache_dir=None, api_key=None):
     """Return county context and source metadata, with an optional stale warning."""
     if fips not in county_names():
         raise ValueError("Unknown Oregon county")
@@ -111,8 +136,10 @@ def context(fips, year, cache_dir=None):
     warning = None
     if stale:
         try:
+            if not (api_key or os.environ.get("CENSUS_API_KEY")):
+                raise CensusKeyRequired("A Census API key must be configured by the site maintainer.")
             _reserve_refresh(path)
-            store(fetch(year), year, path)
+            store(fetch(year, api_key=api_key), year, path)
         except (requests.RequestException, ValueError, KeyError, TypeError, duckdb.Error):
             if not path.exists():
                 raise
