@@ -12,6 +12,7 @@ from oregon_health.data import DB_PATH, MEASURES, comparison, county_profile, de
 from oregon_health.map import county_deck
 from oregon_health.profile import county_names, selected_county
 from oregon_health.census import CensusKeyRequired, context as census_context
+from oregon_health.compare import comparison_rows, display_table
 
 def open_map_profile():
     fips = selected_county(st.session_state.get("county_map", {}))
@@ -23,6 +24,16 @@ def add_comparison(county):
     current = st.session_state.get("compare_counties", [])
     if county not in current:
         st.session_state["compare_counties"] = [*current, county]
+
+
+def census_api_key():
+    key = os.environ.get("CENSUS_API_KEY")
+    if key:
+        return key
+    try:
+        return st.secrets.get("CENSUS_API_KEY")
+    except FileNotFoundError:
+        return None
 
 
 st.set_page_config(page_title="Health Atlas", page_icon="🌲", layout="wide")
@@ -110,9 +121,47 @@ with duckdb.connect(str(path), read_only=True) as db:
             st.bar_chart(visible.set_index("county")[["prevalence"]], y_label="Estimated prevalence (%)", color="#176B63", height=360)
             st.caption("Estimates are shown with confidence intervals in the table below. Differences do not necessarily indicate statistically significant differences.")
     if not visible.empty:
-        with st.expander("Compare estimates & download", expanded=True):
+        with st.expander("Compare estimates & download", expanded=False):
             st.dataframe(visible.drop(columns="fips").rename(columns={"county": "County", "prevalence": "Estimate (%)", "low": "95% CI lower (%)", "high": "95% CI upper (%)"}), hide_index=True)
             st.download_button("Download comparison CSV", visible.to_csv(index=False), "health-atlas-oregon.csv", "text/csv")
+    st.divider()
+    st.markdown("### Compare the whole picture")
+    st.caption("The counties selected above, across all three health measures and community demographics.")
+    include_census = st.checkbox("Include Census demographics", disabled=use_demo, help="Uses the cached ACS release when available. The first load may need a Census request.")
+    if not selected:
+        st.info("Choose counties above to build a side-by-side comparison.")
+    else:
+        names_to_fips = dict(zip(frame.county, frame.fips))
+        codes = [names_to_fips[name] for name in selected]
+        contexts = None
+        if include_census and not use_demo:
+            contexts = {}
+            try:
+                with st.spinner("Loading comparison demographics…"):
+                    for code in codes:
+                        result = census_context(code, year, api_key=census_api_key())
+                        if result["year"] != year:
+                            raise ValueError("Census release year differs from the comparison year")
+                        contexts[code] = result
+                if any(value["warning"] for value in contexts.values()):
+                    st.warning("Census could not be refreshed. Some demographics use previously downloaded data; import dates are included in the CSV.")
+            except CensusKeyRequired:
+                st.info("Census demographics need a key in deployment secrets. Health comparisons remain available.")
+            except (requests.RequestException, ValueError, KeyError, TypeError, duckdb.Error):
+                logging.getLogger(__name__).exception("Comparison demographics unavailable")
+                st.info("Some Census demographics are unavailable. Health comparisons remain available.")
+        comparison_source, comparison_imported = db.execute("SELECT source, imported_at FROM provenance").fetchone()
+        rows = comparison_rows(db, codes, year, comparison_source, comparison_imported, contexts, demo=use_demo)
+        st.dataframe(display_table(rows), hide_index=True, key="full_comparison")
+        st.caption("Health: adult crude prevalence with 95% confidence intervals in parentheses. Census: five-year estimates with 90% margins of error (±); pp means percentage points. Different periods and population definitions are not directly interchangeable. These comparisons are descriptive and do not establish causes or statistical significance.")
+        if use_demo:
+            st.caption("Synthetic health data only; real Census demographics are not loaded in demo mode.")
+        elif not include_census:
+            st.caption("Select Include Census demographics to load population, age and poverty estimates.")
+        if contexts:
+            census_source = next(iter(contexts.values()))
+            st.caption(f"Demographics source: [ACS {year - 4}–{year} five-year estimates]({census_source['source']}). Download includes each county’s import date.")
+        st.download_button("Download full comparison CSV", rows.to_csv(index=False), "health-atlas-county-comparison.csv", "text/csv")
     st.divider()
     st.markdown("### County spotlight")
     st.caption("Click the map or choose a county to explore all three health measures.")
@@ -143,13 +192,7 @@ with duckdb.connect(str(path), read_only=True) as db:
         else:
             try:
                 with st.spinner("Loading Census context…"):
-                    census_key = os.environ.get("CENSUS_API_KEY")
-                    if not census_key:
-                        try:
-                            census_key = st.secrets.get("CENSUS_API_KEY")
-                        except FileNotFoundError:
-                            census_key = None
-                    context = census_context(fips, year, api_key=census_key)
+                    context = census_context(fips, year, api_key=census_api_key())
                 if context["warning"]:
                     st.warning(context["warning"])
                 context_cards = st.columns(3)

@@ -3,7 +3,7 @@ name = "health-atlas"
 version = "0.1.0"
 description = "Explore Oregon county health estimates with CDC PLACES"
 requires-python = ">=3.12"
-dependencies = ["duckdb>=1.2,<2", "streamlit>=1.42,<2", "requests>=2.32,<3", "pydeck>=0.9,<1"]
+dependencies = ["duckdb>=1.2,<2", "streamlit>=1.42,<2", "requests>=2.32,<3", "pydeck>=0.9,<1", "pandas>=2.2,<4"]
 
 [dependency-groups]
 dev = ["pytest>=8,<10"]

@@ -250,6 +250,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "duckdb" },
+    { name = "pandas" },
     { name = "pydeck" },
     { name = "requests" },
     { name = "streamlit" },
@@ -263,6 +264,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "duckdb", specifier = ">=1.2,<2" },
+    { name = "pandas", specifier = ">=2.2,<4" },
     { name = "pydeck", specifier = ">=0.9,<1" },
     { name = "requests", specifier = ">=2.32,<3" },
     { name = "streamlit", specifier = ">=1.42,<2" },
