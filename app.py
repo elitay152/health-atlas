@@ -14,6 +14,7 @@ from oregon_health.profile import county_names, selected_county
 from oregon_health.census import CensusKeyRequired, context as census_context
 from oregon_health.compare import comparison_rows, display_table
 from oregon_health.links import parse_counties, link_params
+from oregon_health.status_ui import render_data_status
 
 def open_map_profile():
     fips = selected_county(st.session_state.get("county_map", {}))
@@ -42,6 +43,7 @@ st.caption("OREGON / COMMUNITY HEALTH")
 st.title("Health Atlas")
 st.write("A closer look at the health of Oregon’s communities.")
 st.sidebar.header("Explore Oregon")
+st.sidebar.markdown("[Data status & coverage](#data-status)")
 if "demo_mode" not in st.session_state:
     st.session_state["demo_mode"] = st.query_params.get("demo") == "1"
 use_demo = st.sidebar.toggle("Use synthetic demo data", key="demo_mode")
@@ -78,6 +80,7 @@ if use_demo:
 else:
     path = DB_PATH
     if not path.exists():
+        render_data_status(DB_PATH, None, dataset)
         st.info("No CDC data has been downloaded yet. Try Refresh data after five minutes, or ask the maintainer to check the data source. You can also enable the clearly labeled synthetic demo.")
         st.stop()
 
@@ -247,5 +250,6 @@ with duckdb.connect(str(path), read_only=True) as db:
     st.query_params.from_dict(link_params([selected_fips[name] for name in selected], year, measure, use_demo, include_census, fips))
     source, imported = db.execute("SELECT source, imported_at FROM provenance").fetchone()
     st.caption(f"Source: {source} · Imported: {imported} UTC")
+render_data_status(path, year, dataset, use_demo)
 st.info("PLACES estimates are modeled population measures, not individual diagnoses. Crude estimates reflect differences in age composition; use caution comparing counties. Differences and associations do not establish causes. Consult confidence intervals and CDC methodology before interpreting results.")
 st.link_button("CDC PLACES data and methodology", "https://www.cdc.gov/places/")

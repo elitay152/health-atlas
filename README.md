@@ -123,3 +123,13 @@ Example: `?compare=41051,41039,41017&year=2023&measure=OBESITY&demo=0&census=1` 
 Comparison links are bounded to Oregon's 36 known FIPS codes, with duplicate codes removed. Unknown counties and counties without an estimate for the selected map measure/year are omitted with a notice. Unavailable years/measures fall back to available options with a notice. Demo mode always disables real Census loading. Older county-only links still work and use the normal initial three-county comparison. Changing between real/demo data resets the comparison to available defaults; the browser address then reflects the new selection.
 
 Only recognized view parameters are retained in the canonical address; unrelated parameters are removed. County IDs and user-supplied link values never become SQL text, destination URLs, cache paths or credentials.
+
+## Data status and coverage
+
+Use the sidebar **Data status & coverage** link to inspect the status panel near the bottom of the page. Expand **Sources, freshness & missing estimates** to see the loaded CDC release, available estimate years, ACS period, last successful fetch, cache refresh window, and last recorded refresh check. This is a snapshot report, not a live uptime monitor, and inspecting it never makes a network request.
+
+For the selected estimate year, coverage counts each of Oregon's 36 expected county FIPS codes for every measure. A missing-estimate report names the county, FIPS, measure and period and can be downloaded as CSV. **Without uncertainty** counts available point estimates without a reported confidence interval or margin of error; it does not double-count missing estimates. The report cannot infer why a source omitted an estimate. In synthetic mode, absent fixtures are explicitly distinguished from real CDC coverage gaps.
+
+A cache older than 24 hours (CDC) or 30 days (Census) is **Refresh due**, which describes fetch age rather than the vintage of the estimate or whether a newer official release exists. Failed refreshes and missing Census-key configuration are recorded separately from coverage. Existing snapshots stay usable. If nothing has been loaded, coverage is **not evaluated**, never reported as zero. Older snapshots without refresh metadata say no outcome has been recorded yet; an old failure does not mark a newer imported snapshot as retained after failure.
+
+Refresh outcomes are persisted in ignored `data/.source-status.sqlite3`, using only a source identifier, an outcome enum and a timestamp. Exception messages, credentials, request URLs and API key values are never stored. Cooldown-blocked actions are not recorded as new failed fetches. The status UI remains available when the initial CDC fetch fails and no health database exists.
