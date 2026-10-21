@@ -11,24 +11,21 @@ def fetch(dataset):
     if not re.fullmatch(r"[a-z0-9]{4}-[a-z0-9]{4}", dataset):
         raise ValueError("Expected a CDC Socrata dataset ID such as abcd-1234")
     base = "https://data.cdc.gov"
-    response = requests.get(f"{base}/api/views/{dataset}.json", timeout=60)
+    response = requests.get(f"{base}/api/views/{dataset}.json", timeout=(5, 30))
     response.raise_for_status()
     title = response.json()["name"]
     if "places" not in title.lower() or "county" not in title.lower():
         raise ValueError(f"Expected a PLACES county dataset, received: {title}")
-    rows = []
-    offset = 0
-    while True:
-        response = requests.get(f"{base}/resource/{dataset}.json", params={
-            "$where": "stateabbr = 'OR' AND measureid IN ('DIABETES', 'CASTHMA', 'OBESITY') AND data_value_type = 'Crude prevalence'",
-            "$limit": 1000, "$offset": offset, "$order": ":id",
-        }, timeout=60)
-        response.raise_for_status()
-        batch = response.json()
-        rows.extend(batch)
-        if len(batch) < 1000:
-            break
-        offset += len(batch)
+    response = requests.get(f"{base}/resource/{dataset}.json", params={
+        "$where": "stateabbr = 'OR' AND measureid IN ('DIABETES', 'CASTHMA', 'OBESITY') AND data_value_type = 'Crude prevalence'",
+        "$limit": 1000, "$offset": 0, "$order": ":id",
+    }, timeout=(5, 30))
+    response.raise_for_status()
+    rows = response.json()
+    if not isinstance(rows, list):
+        raise ValueError("CDC returned an unexpected response")
+    if len(rows) >= 1000:
+        raise ValueError("CDC response exceeds the 1,000-record limit for this county explorer")
     return rows, f"{title} | {base}/d/{dataset}"
 
 
