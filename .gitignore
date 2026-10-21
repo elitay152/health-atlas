@@ -3,3 +3,7 @@ __pycache__/
 .pytest_cache/
 data/*
 !data/.gitkeep
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml

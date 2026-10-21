@@ -35,3 +35,18 @@ def test_download_propagates_network_errors(monkeypatch):
         fetch("abcd-1234")
     with pytest.raises(ValueError):
         fetch("not-a-dataset")
+
+
+def test_download_rejects_oversized_result(monkeypatch):
+    class Response:
+        def __init__(self, value):
+            self.value = value
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return self.value
+    def get(url, **kwargs):
+        return Response({"name": "PLACES County Test"} if "/api/views/" in url else [data for data in demo_rows() for _ in range(112)])
+    monkeypatch.setattr(requests, "get", get)
+    with pytest.raises(ValueError, match="1,000-record"):
+        fetch("abcd-1234")

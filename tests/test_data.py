@@ -44,7 +44,7 @@ def test_app_comparison(monkeypatch):
     import requests
     def offline(*args, **kwargs):
         raise requests.ConnectionError("Offline test")
-    monkeypatch.setattr("oregon_health.api_cache.fetch", offline)
+    monkeypatch.setattr("oregon_health.api_cache.refresh", offline)
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py", default_timeout=15).run()
     app.toggle[0].set_value(True).run()
     assert not app.exception

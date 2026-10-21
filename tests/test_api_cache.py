@@ -15,6 +15,8 @@ SOURCE = f"PLACES County Test Release | https://data.cdc.gov/d/{DATASET}"
 def test_cache_refresh_expiry_and_failure_preservation(tmp_path, monkeypatch):
     path = tmp_path / "cache.duckdb"
     assert api_cache.needs_refresh(DATASET, path)
+    clock = [1000.0]
+    monkeypatch.setattr(api_cache.time, "time", lambda: clock[0])
     monkeypatch.setattr(api_cache, "fetch", lambda dataset: (data.demo_rows(), SOURCE))
     assert api_cache.refresh(DATASET, path) == 9
     assert not api_cache.needs_refresh(DATASET, path)
@@ -23,6 +25,7 @@ def test_cache_refresh_expiry_and_failure_preservation(tmp_path, monkeypatch):
     def offline(dataset):
         raise requests.ConnectionError("Offline")
     monkeypatch.setattr(api_cache, "fetch", offline)
+    clock[0] += 301
     with pytest.raises(requests.ConnectionError):
         api_cache.refresh(DATASET, path)
     with duckdb.connect(str(path)) as db:
@@ -34,6 +37,8 @@ def test_app_download_cache_and_refresh_failure(tmp_path, monkeypatch):
     path = tmp_path / "cache.duckdb"
     monkeypatch.setattr(data, "DB_PATH", path)
     calls = []
+    clock = [1000.0]
+    monkeypatch.setattr(api_cache.time, "time", lambda: clock[0])
     def fetch(dataset):
         calls.append(dataset)
         return data.demo_rows(), f"PLACES County Test | https://data.cdc.gov/d/{dataset}"
@@ -47,17 +52,24 @@ def test_app_download_cache_and_refresh_failure(tmp_path, monkeypatch):
     assert not app.exception
     assert len(calls) == 1
     assert len(app.dataframe[0].value) == 3
+    assert not app.text_input  # Visitors cannot replace the shared release.
     app.sidebar.selectbox[0].select("OBESITY").run()
     assert len(calls) == 1  # Widget interactions use cached SQL data.
+    app.sidebar.button[0].click().run()
+    assert len(calls) == 1
+    assert any("five minutes" in item.value for item in app.info)
+    clock[0] += 301
     app.sidebar.button[0].click().run()
     assert len(calls) == 2
     def offline(dataset):
         calls.append(dataset)
         raise requests.ConnectionError("Offline test")
     monkeypatch.setattr(api_cache, "fetch", offline)
+    clock[0] += 301
     app.sidebar.button[0].click().run()
     assert not app.exception
-    assert "Offline test" in app.error[0].value
+    assert "Could not refresh" in app.error[0].value
+    assert "Offline test" not in app.error[0].value
     assert "previously downloaded" in app.warning[0].value
     assert len(app.dataframe[0].value) == 3
     app.sidebar.selectbox[0].select("DIABETES").run()
@@ -80,3 +92,39 @@ def test_app_empty_cache_failure_does_not_silently_show_demo(tmp_path, monkeypat
     assert len(calls) == 1
     app.sidebar.button[0].click().run()
     assert len(calls) == 2
+
+
+def test_cooldown_covers_failed_downloads_and_different_sources(tmp_path, monkeypatch):
+    path = tmp_path / "cache.duckdb"
+    calls = []
+    clock = [1000.0]
+    monkeypatch.setattr(api_cache.time, "time", lambda: clock[0])
+    def offline(dataset):
+        calls.append(dataset)
+        raise requests.ConnectionError("Offline")
+    monkeypatch.setattr(api_cache, "fetch", offline)
+    with pytest.raises(requests.ConnectionError):
+        api_cache.refresh(DATASET, path)
+    with pytest.raises(api_cache.RefreshLimited):
+        api_cache.refresh("efgh-5678", path)
+    assert calls == [DATASET]
+    clock[0] += 301
+    with pytest.raises(requests.ConnectionError):
+        api_cache.refresh(DATASET, path)
+    assert len(calls) == 2
+
+
+def test_simultaneous_refresh_reservations_allow_only_one(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    barrier = Barrier(8)
+    path = tmp_path / "cache.duckdb"
+    def reserve(_):
+        barrier.wait()
+        try:
+            api_cache._reserve_refresh(path)
+            return True
+        except api_cache.RefreshLimited:
+            return False
+    with ThreadPoolExecutor(max_workers=8) as workers:
+        assert sum(workers.map(reserve, range(8))) == 1

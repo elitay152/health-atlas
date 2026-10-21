@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -5,7 +6,7 @@ import duckdb
 import streamlit as st
 import requests
 
-from oregon_health.api_cache import DEFAULT_DATASET, needs_refresh, refresh
+from oregon_health.api_cache import DEFAULT_DATASET, RefreshLimited, needs_refresh, refresh
 
 from oregon_health.data import DB_PATH, MEASURES, comparison, demo_rows, store
 
@@ -14,8 +15,9 @@ st.title("Health Atlas")
 st.write("Explore the health of Oregon’s communities.")
 use_demo = st.sidebar.toggle("Use synthetic demo data", value=False)
 with st.sidebar.expander("CDC data source"):
-    dataset = st.text_input("County GIS-friendly dataset ID", value=os.environ.get("CDC_PLACES_DATASET", DEFAULT_DATASET))
-    st.caption("Use a CDC PLACES county GIS-friendly release ID. The downloaded release title appears below the chart.")
+    dataset = os.environ.get("CDC_PLACES_DATASET", DEFAULT_DATASET)
+    st.text(f"Dataset: {dataset}")
+    st.caption("The site maintainer chooses the CDC release. The downloaded release title appears below the chart.")
 refresh_clicked = st.sidebar.button("Refresh data", disabled=use_demo)
 if not use_demo:
     # One automatic attempt per source per session prevents retrying on every
@@ -28,11 +30,14 @@ if not use_demo:
                 count = refresh(dataset)
             st.session_state.pop(attempt_key, None)
             st.success(f"Downloaded {count} Oregon estimates from CDC.")
-        except (requests.RequestException, ValueError, KeyError, TypeError, duckdb.Error) as exc:
-            st.error(f"Could not refresh CDC data: {exc}")
+        except RefreshLimited as exc:
+            st.info(str(exc))
+        except (requests.RequestException, ValueError, KeyError, TypeError, duckdb.Error):
+            logging.getLogger(__name__).exception("CDC refresh failed")
+            st.error("Could not refresh CDC data. Please try again later. Technical details are available in the server logs.")
             if DB_PATH.exists():
                 st.warning("Showing previously downloaded data. Check its source and import date below; it may be older or from another release.")
-    st.sidebar.caption("CDC data is cached locally for 24 hours. Refresh data checks CDC immediately. No API key required.")
+    st.sidebar.caption("CDC data is cached locally for 24 hours. Refresh attempts are limited to one per five minutes for all visitors combined. No API key required.")
 if use_demo:
     st.warning("DEMO — synthetic values for three counties. These are not CDC estimates and must not be used for health decisions.")
     demo_path = Path(__file__).resolve().parent / "data" / "demo.duckdb"
@@ -42,7 +47,7 @@ if use_demo:
 else:
     path = DB_PATH
     if not path.exists():
-        st.info("No CDC data has been downloaded yet. Check network access and the dataset ID, then click Refresh data. You can also enable the clearly labeled synthetic demo.")
+        st.info("No CDC data has been downloaded yet. Try Refresh data after five minutes, or ask the maintainer to check the data source. You can also enable the clearly labeled synthetic demo.")
         st.stop()
 
 with duckdb.connect(str(path), read_only=True) as db:
