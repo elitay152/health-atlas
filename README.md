@@ -78,3 +78,21 @@ Boundaries are bundled locally, so deployment needs no map API key, tile provide
 Click a county on the map to open **County spotlight**, or use the keyboard-accessible **County profile** selector below the comparison. A profile shows diabetes, current asthma and obesity estimates with 95% confidence intervals for the selected estimate year. Missing measures say **Unavailable**; data from a different year is not silently substituted. **Add county to comparison** adds the county to the existing comparison when it has a record for the current map measure.
 
 Selecting a profile updates the browser URL. Copy it to share the county, year, current measure and explicit synthetic demo mode. For example, `?county=41051&year=2023&measure=DIABETES&demo=0` opens Multnomah County using real data. Links refer to the deployment's configured CDC release, not an immutable historical snapshot. Unknown county IDs are ignored with a warning, and unavailable year/measure options fall back to available data shown in the controls. Clearing the profile removes the county parameter.
+
+## Census community context
+
+Real-data county profiles also request U.S. Census Bureau **ACS five-year Data Profiles** for the release ending in the selected health-estimate year. For example, 2023 health estimates use the ACS **2019–2023** period. No substitution to a different year is made; this integration supports release years 2015–2024 and validates variable labels before importing a release.
+
+Fields from `https://api.census.gov/data/{year}/acs/acs5/profile`:
+
+| Display | Estimate | Margin of error | Population universe |
+| --- | --- | --- | --- |
+| Population | `DP05_0001E` | `DP05_0001M` | All residents |
+| Residents age 65+ | `DP05_0024PE` | `DP05_0024PM` | Share of all residents |
+| Below poverty level | `DP03_0128PE` | `DP03_0128PM` | Share of people for whom poverty status is determined |
+
+Census API requests are restricted to Oregon (`state:41`, `county:*`), require the expected set of all 36 county FIPS codes, and preserve missing/suppressed sentinel values as unavailable. Census uses **90%** margins of error; the CDC intervals shown separately use **95%** confidence. Percent margins are shown in percentage points. These datasets describe different populations and periods; displaying them together does not establish relationships or causes.
+
+The app fetches the statewide Census release only when a real-data county profile is opened. It caches a complete snapshot in `data/census_{year}.duckdb` for 30 days, then refreshes on access. Separate county profiles reuse that same release. Failed attempts share the existing five-minute cooldown per Census release, and failed refreshes retain old snapshots with an explicit warning. A failed first fetch leaves the health profile usable with an unavailable-context message. Synthetic mode does not fetch or display real demographics.
+
+Hosting must allow outbound HTTPS to **api.census.gov** as well as **data.cdc.gov**. No credential is configured for these public Census requests. Live Census responses have not yet been verified in this cloud runtime: the initial request was blocked by its network policy. The domain addition has been saved in environment settings for review and publication. After it takes effect, open a real county profile and verify the source period, all 36 county records, and variable labels. Unit and UI checks use synthetic Census fixtures and do not establish live API availability.

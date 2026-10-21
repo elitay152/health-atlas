@@ -11,6 +11,7 @@ from oregon_health.api_cache import DEFAULT_DATASET, RefreshLimited, needs_refre
 from oregon_health.data import DB_PATH, MEASURES, comparison, county_profile, demo_rows, store
 from oregon_health.map import county_deck
 from oregon_health.profile import county_names, selected_county
+from oregon_health.census import context as census_context
 
 def open_map_profile():
     fips = selected_county(st.session_state.get("county_map", {}))
@@ -136,6 +137,33 @@ with duckdb.connect(str(path), read_only=True) as db:
                 st.caption(f"95% CI: {row.low:.1f}%–{row.high:.1f}%" if row is not None else "No estimate for this county and year.")
         if profile.empty:
             st.info("No estimates are available for this county in the selected year. Missing values are not zero.")
+        st.markdown("#### Community context")
+        if use_demo:
+            st.info("Census demographics are available in real-data mode. No real Census values are mixed into this synthetic demo.")
+        else:
+            try:
+                with st.spinner("Loading Census context…"):
+                    context = census_context(fips, year)
+                if context["warning"]:
+                    st.warning(context["warning"])
+                context_cards = st.columns(3)
+                labels = [("Population", "population", "population_moe", False),
+                          ("Residents age 65+", "age65_pct", "age65_moe", True),
+                          ("Below poverty level", "poverty_pct", "poverty_moe", True)]
+                for card, (label, field, moe_field, percent) in zip(context_cards, labels):
+                    with card.container(border=True):
+                        value, moe = context[field], context[moe_field]
+                        formatted = "Unavailable" if value is None else (f"{value:.1f}%" if percent else f"{value:,.0f}")
+                        st.metric(label, formatted)
+                        if moe is not None and value is not None:
+                            st.caption(f"90% margin of error: ±{moe:.1f} percentage points" if percent else f"90% margin of error: ±{moe:,.0f} people")
+                        else:
+                            st.caption("Margin of error unavailable.")
+                st.caption(f"Source: ACS {year - 4}–{year} five-year estimates · [U.S. Census Bureau]({context['source']}) · Imported {context['imported_at']} UTC")
+                st.caption("Census figures describe a five-year period and include residents of all ages. Poverty uses the population for whom poverty status is determined. CDC health measures describe adults. Census margins use 90% confidence; CDC intervals use 95%. These figures provide context and do not establish causes.")
+            except (requests.RequestException, ValueError, KeyError, TypeError, duckdb.Error):
+                logging.getLogger(__name__).exception("Census context unavailable")
+                st.info("Census context is currently unavailable for this year. Health estimates and county comparisons remain available.")
         st.button("Add county to comparison", on_click=add_comparison, args=(names[fips],), disabled=names[fips] not in options or names[fips] in selected)
         if names[fips] not in options:
             st.caption("This county has no estimate for the current map measure, so it cannot be added to that comparison.")
