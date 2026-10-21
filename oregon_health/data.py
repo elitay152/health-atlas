@@ -54,7 +54,7 @@ def store(rows, source, path=DB_PATH):
 
 def comparison(db, measure, year):
     return db.execute("""
-        SELECT county, prevalence, low, high
+        SELECT fips, county, prevalence, low, high
         FROM estimates WHERE measure = ? AND year = ?
         ORDER BY prevalence DESC, county
     """, [measure, year]).df()
