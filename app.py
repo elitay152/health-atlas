@@ -9,9 +9,9 @@ from oregon_health.api_cache import DEFAULT_DATASET, needs_refresh, refresh
 
 from oregon_health.data import DB_PATH, MEASURES, comparison, demo_rows, store
 
-st.set_page_config(page_title="Oregon Health Explorer", page_icon="🌲", layout="wide")
-st.title("Oregon Health Explorer")
-st.write("Explore county health estimates and compare communities across Oregon.")
+st.set_page_config(page_title="Health Atlas", page_icon="🌲", layout="wide")
+st.title("Health Atlas")
+st.write("Explore the health of Oregon’s communities.")
 use_demo = st.sidebar.toggle("Use synthetic demo data", value=False)
 with st.sidebar.expander("CDC data source"):
     dataset = st.text_input("County GIS-friendly dataset ID", value=os.environ.get("CDC_PLACES_DATASET", DEFAULT_DATASET))

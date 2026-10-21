@@ -1,4 +1,4 @@
-# Oregon Health Explorer
+# Health Atlas
 
 A shared Python and SQL project exploring county health in Oregon. The first version compares diabetes, current asthma, and obesity prevalence with CDC PLACES county estimates.
 
