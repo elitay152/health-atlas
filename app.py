@@ -11,7 +11,7 @@ from oregon_health.api_cache import DEFAULT_DATASET, RefreshLimited, needs_refre
 from oregon_health.data import DB_PATH, MEASURES, comparison, county_profile, demo_rows, store
 from oregon_health.map import county_deck
 from oregon_health.profile import county_names, selected_county
-from oregon_health.census import context as census_context
+from oregon_health.census import CensusKeyRequired, context as census_context
 
 def open_map_profile():
     fips = selected_county(st.session_state.get("county_map", {}))
@@ -143,7 +143,13 @@ with duckdb.connect(str(path), read_only=True) as db:
         else:
             try:
                 with st.spinner("Loading Census context…"):
-                    context = census_context(fips, year)
+                    census_key = os.environ.get("CENSUS_API_KEY")
+                    if not census_key:
+                        try:
+                            census_key = st.secrets.get("CENSUS_API_KEY")
+                        except FileNotFoundError:
+                            census_key = None
+                    context = census_context(fips, year, api_key=census_key)
                 if context["warning"]:
                     st.warning(context["warning"])
                 context_cards = st.columns(3)
@@ -161,6 +167,8 @@ with duckdb.connect(str(path), read_only=True) as db:
                             st.caption("Margin of error unavailable.")
                 st.caption(f"Source: ACS {year - 4}–{year} five-year estimates · [U.S. Census Bureau]({context['source']}) · Imported {context['imported_at']} UTC")
                 st.caption("Census figures describe a five-year period and include residents of all ages. Poverty uses the population for whom poverty status is determined. CDC health measures describe adults. Census margins use 90% confidence; CDC intervals use 95%. These figures provide context and do not establish causes.")
+            except CensusKeyRequired:
+                st.info("Census context is not configured yet. The site maintainer needs to add a Census API key in deployment secrets. Health estimates remain available.")
             except (requests.RequestException, ValueError, KeyError, TypeError, duckdb.Error):
                 logging.getLogger(__name__).exception("Census context unavailable")
                 st.info("Census context is currently unavailable for this year. Health estimates and county comparisons remain available.")

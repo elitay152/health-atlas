@@ -42,6 +42,7 @@ def test_fetch_checks_variable_meaning_and_oregon_scope(monkeypatch):
     variables["DP05_0024PE"]["label"] = "Percent!!65 years and over"
     variables["DP03_0128PE"]["label"] = "Percent!!All people"
     class Response:
+        status_code = 200
         def __init__(self, value):
             self.value = value
         def raise_for_status(self):
@@ -52,19 +53,22 @@ def test_fetch_checks_variable_meaning_and_oregon_scope(monkeypatch):
         calls.append((url, kwargs))
         return Response({"variables": variables} if url.endswith("variables.json") else payload())
     monkeypatch.setattr(requests, "get", get)
-    assert len(census.fetch(2023)) == 36
+    assert len(census.fetch(2023, api_key="synthetic-test-key")) == 36
+    assert calls[0][1]["params"] is None
+    assert calls[-1][1]["params"]["key"] == "synthetic-test-key"
     assert calls[-1][1]["params"]["in"] == "state:41"
     assert calls[-1][1]["params"]["for"] == "county:*"
     variables["DP05_0024PE"]["label"] = "Percent!!Under 18 years"
     with pytest.raises(ValueError, match="definitions"):
-        census.fetch(2023)
+        census.fetch(2023, api_key="synthetic-test-key")
 
 
 def test_cache_reuse_year_isolation_and_failed_refresh(tmp_path, monkeypatch):
+    monkeypatch.setenv("CENSUS_API_KEY", "synthetic-test-key")
     calls = []
     clock = [1000.0]
     monkeypatch.setattr("oregon_health.api_cache.time.time", lambda: clock[0])
-    def fetch(year):
+    def fetch(year, api_key=None):
         calls.append(year)
         records = census.normalize(payload())
         return [(fips, 39000 if fips == "41039" else population, *values) for fips, population, *values in records]
@@ -81,7 +85,7 @@ def test_cache_reuse_year_isolation_and_failed_refresh(tmp_path, monkeypatch):
     with duckdb.connect(str(path)) as db:
         db.execute("UPDATE provenance SET imported_at = ?", [datetime.now() - timedelta(days=31)])
     clock[0] += 301
-    def offline(year):
+    def offline(year, api_key=None):
         calls.append(year)
         raise requests.ConnectionError("Offline")
     monkeypatch.setattr(census, "fetch", offline)
@@ -113,7 +117,7 @@ def test_profile_shows_context_and_survives_census_outage(tmp_path, monkeypatch)
     monkeypatch.setattr(api_cache, "needs_refresh", lambda dataset: False)
     result = dict(zip(census.COLUMNS, [10000, 250, 20, 1.5, 12, 2]))
     result.update(source=census.release_url(2022), imported_at=datetime(2026, 1, 1), year=2022, warning=None)
-    monkeypatch.setattr(census, "context", lambda *args: result)
+    monkeypatch.setattr(census, "context", lambda *args, **kwargs: result)
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py", default_timeout=15)
     app.query_params.update(county="41051", year="2022")
     app.run()
@@ -121,7 +125,7 @@ def test_profile_shows_context_and_survives_census_outage(tmp_path, monkeypatch)
     assert any(m.label == "Population" and m.value == "10,000" for m in app.metric)
     assert any("2018–2022" in c.value for c in app.caption)
     assert any("90% margin of error" in c.value for c in app.caption)
-    def offline(*args):
+    def offline(*args, **kwargs):
         raise requests.ConnectionError("Private diagnostic")
     monkeypatch.setattr(census, "context", offline)
     app.run()
@@ -129,3 +133,46 @@ def test_profile_shows_context_and_survives_census_outage(tmp_path, monkeypatch)
     assert any("Census context is currently unavailable" in item.value for item in app.info)
     assert any(m.label == "Diabetes" and m.value == "10.0%" for m in app.metric)
     assert "Private diagnostic" not in " ".join(i.value for i in app.info)
+
+
+def test_live_style_metadata_lists_margins_as_attributes():
+    variables = {
+        "DP05_0001E": {"label": "Estimate!!SEX AND AGE!!Total population", "attributes": "DP05_0001EA,DP05_0001M,DP05_0001MA"},
+        "DP05_0024PE": {"label": "Percent!!SEX AND AGE!!Total population!!65 years and over", "attributes": "DP05_0024PEA,DP05_0024PM,DP05_0024PMA"},
+        "DP03_0128PE": {"label": "Percent!!POVERTY!!All people", "attributes": "DP03_0128PEA,DP03_0128PM,DP03_0128PMA"},
+    }
+    census.validate_variables(variables)
+    variables["DP05_0024PE"]["attributes"] = "DP05_0024PEA"
+    with pytest.raises(ValueError):
+        census.validate_variables(variables)
+
+
+def test_key_requirements_and_error_redaction(monkeypatch):
+    import traceback
+    monkeypatch.delenv("CENSUS_API_KEY", raising=False)
+    with pytest.raises(census.CensusKeyRequired):
+        census.fetch(2023)
+    secret = "synthetic-private-test-value"
+    def fail(*args, **kwargs):
+        raise requests.ConnectionError(f"Failed URL https://api.census.gov/data/?key={secret}")
+    monkeypatch.setattr(requests, "get", fail)
+    with pytest.raises(census.CensusUnavailable) as error:
+        census._get_json("https://api.census.gov/data/", params={"key": secret})
+    assert secret not in "".join(traceback.format_exception(error.type, error.value, error.tb))
+
+
+def test_key_is_only_sent_to_data_endpoint_and_redirects_are_disabled(monkeypatch):
+    calls = []
+    class Response:
+        status_code = 302
+        def raise_for_status(self):
+            pass
+        def json(self):
+            raise AssertionError("Redirects must not be parsed or followed")
+    def get(url, **kwargs):
+        calls.append(kwargs)
+        return Response()
+    monkeypatch.setattr(requests, "get", get)
+    with pytest.raises(census.CensusUnavailable):
+        census._get_json("https://api.census.gov/data/", params={"key": "synthetic-test-key"})
+    assert calls[0]["allow_redirects"] is False
