@@ -163,3 +163,19 @@ All are modeled adult prevalence estimates. Consult CDC's measure definitions an
 The comparison beside the map now uses dots for estimates and lines for 95% confidence intervals. A county histogram adds a dashed county-median line: each county has equal weight, so this is not a population-weighted Oregon estimate. County profiles include an interval chart for all available conditions. The full comparison adds a prevalence heatmap with a fixed 0–100% color scale, numeric labels, and interval tooltips. Gray/— means unavailable, never zero. For legibility the heatmap shows the first three selected counties; the table and CSV keep every selected county. Confidence intervals and overlap alone do not establish statistical significance.
 
 Refreshes record a catalog signature in the health snapshot. A cache created before this expansion triggers the existing bounded refresh workflow even if it is under 24 hours old. Failed upgrades keep the prior snapshot usable; the measure picker only offers measures present in that snapshot, and coverage reporting shows gaps. Older releases need not support every catalog measure. Demo fixtures cover nine synthetic conditions for three counties. No dependency declarations, cache files or imported data need manual edits to upgrade.
+
+## CMS hospital import
+
+The first facility source is CMS **Hospital General Information** (`xubh-q36u`). To download and validate the Oregon directory independently of the Streamlit app:
+
+```sh
+uv run python -m oregon_health.hospitals
+```
+
+The command reuses `data/hospitals.duckdb` for 24 hours and prints source provenance and coverage for all 36 Oregon counties. `--refresh` requests an earlier refresh, subject to the shared five-minute cooldown; `--path /tmp/hospitals.duckdb` selects a separate snapshot. No CMS API key is required. This is an import foundation; the deployed app does not load or display hospitals yet.
+
+The importer resolves the CSV URL through official CMS metadata, restricts downloads to the CMS HTTPS provider-data host, rejects redirects, bounds response size and row count, and checks required columns, Oregon records and unique facility identifiers. It replaces the snapshot atomically after validation. Errors leave the previous snapshot intact and return a failing exit status; a failed refresh does not advance its successful fetch time. Daily cache reuse is distinct from CMS's typical quarterly publication cadence.
+
+Source Facility IDs and ZIPs remain strings. County names map through the existing Oregon FIPS lookup; unrecognized names and incomplete addresses stay visible in coverage. Missing emergency-services values remain unknown rather than No. Provenance retains dataset and download URLs, released/modified dates, successful UTC fetch time and a content SHA-256. Read-only `directory()` and `coverage()` helpers never make network requests.
+
+CMS does not supply coordinates in this file. The importer creates no coordinates or map markers; a later location-enrichment step must retain its own source and match quality. County counts describe hospitals listed by this dataset, not all healthcare services, service capacity or market demand. Zero records in a county does not mean no healthcare is available. CMS's [hospital dictionary](https://data.cms.gov/provider-data/sites/default/files/data_dictionaries/hospital/HOSPITAL_Data_Dictionary.pdf) permits public-domain reuse and requests attribution; commercial use must not imply government endorsement. The [source contract](https://github.com/elitay152/health-atlas/issues/18) and [CMS research](https://github.com/elitay152/health-atlas/issues/15) document interpretation and source selection.
