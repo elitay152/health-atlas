@@ -1,0 +1,15 @@
+Source: U.S. Census Bureau, 2023 cartographic boundary files, Oregon census tracts.
+https://www2.census.gov/geo/tiger/GENZ2023/shp/cb_2023_41_tract_500k.zip
+
+The following use constraints are reproduced from
+cb_2023_41_tract_500k.shp.iso.xml in the source archive:
+
+Access constraints: None
+
+Use Constraints: The intended display scale for this file is 1:500,000. This file should not be displayed at scales larger than 1:500,000.
+
+These products are free to use in a product or publication, however acknowledgement must be given to the U.S. Census Bureau as the source. The boundary information is for visual display at appropriate small scales only. Cartographic boundary files should not be used for geographic analysis including area or perimeter calculation. Files should not be used for geocoding addresses. Files should not be used for determining precise geographic area relationships.
+
+Health Atlas acknowledges the U.S. Census Bureau as the source. This artifact
+is distinct from the Plotly county dataset and its MIT license. No government
+endorsement is implied.

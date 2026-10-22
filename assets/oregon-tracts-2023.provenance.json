@@ -1,0 +1,23 @@
+{
+  "source_url": "https://www2.census.gov/geo/tiger/GENZ2023/shp/cb_2023_41_tract_500k.zip",
+  "source_sha256": "366d526c6d2cbb6f11c53048cc1ed3f99ec227f029e9c1f8f3f64cd6996e7a34",
+  "source_bytes": 1152819,
+  "source_retrieved_at": "2026-10-22",
+  "prepared_at": "2026-10-22T14:41:29.535496+00:00",
+  "boundary_year": 2023,
+  "scale": "1:500,000",
+  "source_crs": "EPSG:4269",
+  "output_crs": "EPSG:4326",
+  "axis_order": "longitude,latitude",
+  "coordinate_decimals": 6,
+  "transformation": "pyproj Transformer.from_crs, always_xy=True, allow_ballpark=False; no additional simplification",
+  "pyshp_version": "3.1.4",
+  "pyproj_version": "3.7.2",
+  "proj_version": "9.5.1",
+  "features": 994,
+  "geojson_bytes": 2588656,
+  "geojson_sha256": "6989f95077c59a228aaa379dbc99aecf3f5b812174eec77683607547744e93f5",
+  "attribution": "U.S. Census Bureau",
+  "reuse": "Free to use in a product or publication with U.S. Census Bureau acknowledgement.",
+  "constraints": "Small-scale visual display only, no larger than 1:500,000. Not for geographic analysis, area/perimeter calculations, geocoding or precise geographic relationships."
+}
