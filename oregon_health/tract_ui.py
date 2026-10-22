@@ -14,6 +14,7 @@ from oregon_health import tracts, tract_boundaries
 from oregon_health.api_cache import RefreshLimited
 from oregon_health.data import MEASURES
 from oregon_health.links import parse_tract
+from oregon_health.interpretation import render_interpretation
 from oregon_health.map import LOW, HIGH, MISSING
 from oregon_health.profile import county_names
 from oregon_health.status import last_refresh
@@ -198,6 +199,7 @@ def render_tracts(county, measure, county_year, demo=False):
     available = sum(f['properties']['prevalence'] is not None for f in features.values())
     st.write(f'**{available} of {len(features)} tracts with estimates** · {len(features)-available} unavailable')
     st.caption(f"Estimate year: {year or 'unavailable'} · Adult crude prevalence · 95% confidence intervals · Census boundaries: 2023")
+    st.caption("These crude rates reflect age differences. Read the intervals; a tract estimate does not describe individual patients or establish healthcare demand.")
     if joined['estimates_without_boundary']:
         st.warning(f"{len(joined['estimates_without_boundary'])} saved tract records have no compatible boundary and are excluded from this map.")
     select = st.selectbox('Census tract',list(features),index=None,key='tract_selection',
@@ -219,6 +221,10 @@ def render_tracts(county, measure, county_year, demo=False):
             st.caption(f"95% confidence interval: {_interval(p['low'],p['high'])}")
             if p['estimate_status']=='no_record':
                 st.info('No CDC row is saved for this boundary, measure and year. Missing is not zero; the source does not establish why this tract is absent.')
+            if p['estimate_status']=='unavailable':
+                st.info('A CDC row is saved, but its estimate is unavailable. Read any source footnote; only call it suppressed if the source says so. Missing is not zero.')
+            elif p['prevalence'] is not None and (p['low'] is None or p['high'] is None):
+                st.info('The estimate is available, but a complete 95% confidence interval is unavailable. This does not mean zero uncertainty.')
             record = next((r for r in rows if r['tract_fips']==select),None)
             if record:
                 st.text(record['definition'])
@@ -227,6 +233,7 @@ def render_tracts(county, measure, county_year, demo=False):
             st.caption(f"{county_names()[county]} County · Estimate year {year or 'unavailable'} · Census tract geography, not an individual neighborhood or facility catchment.")
         else:
             st.info('Select a tract on the map or in the selector above to open its estimate and confidence interval.')
+    render_interpretation(small_area=True)
     with st.expander('All tracts & interpretation',expanded=False):
         st.dataframe(pd.DataFrame([{'Tract':f['properties']['name'],'GEOID':f['id'],
             'Estimate (%)':f['properties']['prevalence'],'95% CI lower (%)':f['properties']['low'],

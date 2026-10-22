@@ -292,3 +292,9 @@ https://health-atlas.streamlit.app/?county=41051&year=2023&measure=DIABETES&loca
 Example: Multnomah County tract exploration, CDC PLACES 2025 release with estimate year 2023. The screenshot is illustrative; inspect source dates in the running app.
 
 ![County-to-tract explorer](docs/images/tract-explorer.png)
+
+### Reading small-area estimates
+
+**How to read tract estimates**, next to the tract view, and **How to interpret these estimates** explain modeling, 95% uncertainty, age composition, unlike periods, changed geography and needs-versus-demand limits, with a direct [CDC methodology reference](https://www.cdc.gov/places/methodology/index.html). Short reminders remain visible beside the county and tract estimates. The guidance does not calculate a significance test, trend, market-size estimate or combined score.
+
+Tract details distinguish three cases: no saved source row (reason unverified), a saved row with a null estimate (read its footnote; do not presume suppression), and an available estimate without a complete interval (uncertainty incomplete, not zero). Gray/unavailable values never mean zero prevalence. Source definitions and footnotes remain in tract details; county comparison exports continue to retain measure labels, population universe, units, estimate periods, confidence levels and source/import metadata. This guidance does not change source values or export schemas.
