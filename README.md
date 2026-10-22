@@ -253,7 +253,7 @@ Example audit of cached public snapshots, captured 2026-10-22. Record counts and
 
 ## Tract health estimates (importer)
 
-The standalone tract importer prepares the next stage of local exploration; it does not change the app's county views yet. It uses the official [CDC PLACES 2025 tract release](https://data.cdc.gov/d/cwsq-ngmh), with no API key or new network domain:
+The tract importer provides a separate data layer for local exploration. It uses the official [CDC PLACES 2025 tract release](https://data.cdc.gov/d/cwsq-ngmh), with no API key or new network domain:
 
 ```sh
 uv run python -m oregon_health.tracts
@@ -271,6 +271,24 @@ Compatible **2023 Census tract boundaries** are bundled separately; see the prep
 
 ### Prepared tract boundaries
 
-The compatible **2023 Census tract boundaries** are now bundled for future local exploration: 994 polygons, transformed to WGS84 with source attribution, checksums and explicit vintage. The loader and GEOID join report preserve missing estimates and report unmatched IDs or differences against a previous boundary collection. All 993 currently observed CDC tracts join; the additional Malheur boundary remains unavailable.
+The compatible **2023 Census tract boundaries** are now bundled for local exploration: 994 polygons, transformed to WGS84 with source attribution, checksums and explicit vintage. The loader and GEOID join report preserve missing estimates and report unmatched IDs or differences against a previous boundary collection. All 993 currently observed CDC tracts join; the additional Malheur boundary remains unavailable.
 
-See [boundary provenance, reproduction and use constraints](assets/README.md#oregon-tract-boundaries-2023). Census specifies small-scale display no larger than 1:500,000; this generalized artifact must not be used for street-level maps, address matching or precise service-area analysis. The app's interactive county-to-tract navigation will be added separately.
+See [boundary provenance, reproduction and use constraints](assets/README.md#oregon-tract-boundaries-2023). Census specifies small-scale display no larger than 1:500,000; this generalized artifact must not be used for street-level maps, address matching or precise service-area analysis. The county-to-tract explorer below uses these boundaries at a fixed overview scale.
+
+## Explore a county's census tracts
+
+Select a county on the Oregon map or in **County spotlight**, then enable **Explore census tracts in this county** in **A closer look: census tracts**. The first use downloads the separate CDC tract snapshot; subsequent interactions reuse it. Tract-source failures retain any saved data and leave county exploration usable. **Tract source & refresh** shows the source release, successful UTC fetch time and refresh control. Real tract records are disabled in synthetic demo mode.
+
+Choose a **Census tract** using the keyboard-accessible selector or click its polygon. The selected tract's details show the estimate, 95% confidence interval, measure definition and any source footnote. **Back to county overview** clears the tract selection. Selection persists across health-measure changes within a county and clears when switching counties. The collapsed **All tracts & interpretation** table includes every boundary, numeric intervals and explicit statuses for available, null-estimate and no-source-row records.
+
+The **Tract estimate year** is separate from the county estimate year; a notice appears when periods differ. Boundary vintage remains 2023. Gray polygons are unavailable, never zero; the source does not establish why omitted tracts are absent. Teal colors adjust to the available estimates in this county/measure/year and cannot be compared across views. Copper outlines identify the selected tract. No tract-to-county averaging or combined risk/demand score is calculated.
+
+The map is a **fixed overview**: mouse/touch/keyboard zoom and base-map zoom controls are disabled. It uses a conservative scale cap and a narrow-viewport fit to honor Census's 1:500,000 display constraint. Small urban tracts can be selected through the selector/table instead of enlarging the generalized geometry. No external basemap is requested for the tract layer. Desktop uses a map/details layout; mobile stacks these panels. This is not street-level geography, address matching or a service-area boundary.
+
+Copy the browser address to share a view. Links retain the existing county/comparison settings and add only validated `local=1`, an optional 11-digit `tract` in the selected county, and the available `tract_year`. Invalid, cross-county or unmatched tract links produce a notice and an empty selection. Links use the site's current data release and do not pin a historical snapshot. Example after deployment:
+
+https://health-atlas.streamlit.app/?county=41051&year=2023&measure=DIABETES&local=1&tract=41051000101&tract_year=2023
+
+Example: Multnomah County tract exploration, CDC PLACES 2025 release with estimate year 2023. The screenshot is illustrative; inspect source dates in the running app.
+
+![County-to-tract explorer](docs/images/tract-explorer.png)

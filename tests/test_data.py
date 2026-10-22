@@ -46,7 +46,7 @@ def test_app_comparison(monkeypatch):
         raise requests.ConnectionError("Offline test")
     monkeypatch.setattr("oregon_health.api_cache.refresh", offline)
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py", default_timeout=15).run()
-    app.toggle[0].set_value(True).run()
+    app.toggle(key="demo_mode").set_value(True).run()
     assert not app.exception
     assert "DEMO" in app.warning[0].value
     assert len(app.dataframe[0].value) == 3
