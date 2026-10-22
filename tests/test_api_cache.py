@@ -87,7 +87,9 @@ def test_app_empty_cache_failure_does_not_silently_show_demo(tmp_path, monkeypat
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py", default_timeout=15).run()
     assert not app.exception
     assert app.error
-    assert not app.dataframe
+    # Local quality tables remain available; no synthetic health view appears.
+    assert not app.selectbox
+    assert not any("Estimate (%)" in d.value.columns for d in app.dataframe)
     app.run()
     assert len(calls) == 1
     app.sidebar.button[0].click().run()

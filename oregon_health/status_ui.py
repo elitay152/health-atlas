@@ -6,6 +6,7 @@ import duckdb
 import streamlit as st
 
 from oregon_health.status import health_report, census_report
+from oregon_health.access_quality_ui import render_access_quality
 
 
 def _event(report):
@@ -69,3 +70,5 @@ def render_data_status(path, year, dataset, demo=False):
                 _event(report)
             except (duckdb.Error, ValueError, OSError):
                 st.info("Census snapshot status could not be read. Health data remains independent.")
+
+        render_access_quality(Path(path).parent, demo)
