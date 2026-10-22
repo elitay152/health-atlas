@@ -52,6 +52,6 @@ def render_access_quality(cache_dir,demo=False):
     else:
         st.caption('No record-level findings were identified among the evaluated checks. Unevaluated sources and unsupported fields are not certified complete.')
     st.download_button('Download access-quality checks',_csv(report['checks']),
-                       'health-atlas-access-quality.csv','text/csv',key='access_quality_checks')
+                       'health-atlas-access-quality.csv','text/csv',key='access_quality_checks',on_click='ignore')
     st.download_button('Download access-quality findings',_csv(report['findings'],['Source','Record ID','Check','Detail']),
-                       'health-atlas-access-findings.csv','text/csv',key='access_quality_findings')
+                       'health-atlas-access-findings.csv','text/csv',key='access_quality_findings',on_click='ignore')
