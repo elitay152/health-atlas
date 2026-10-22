@@ -225,3 +225,28 @@ uv run python -m oregon_health.hrsa
 Example: primary-care geographic designations with **Designated** status, using HRSA warehouse data dated 2026-10-21. This is a captured display, not a current eligibility determination.
 
 ![Example HRSA primary-care geographic designation map](docs/images/hrsa-primary-care.png)
+
+## Audit healthcare-access snapshots
+
+The **Data status & coverage → Sources, freshness & missing estimates** panel now includes **Healthcare access sources**. It reads the saved CMS hospital, Census address-match and HRSA snapshots without fetching data, reserving refreshes, creating caches or changing records. It remains independent of the source-view toggles.
+
+The summary separates snapshot availability, saved record counts, successful fetch time/age, cache freshness, source release/warehouse date or address benchmark, and the last recorded refresh outcome. A failed refresh marks a snapshot as retained only when that failure is newer than its successful fetch; an older failure does not mislabel a newer snapshot. This is not a live service-uptime check. A recent fetch does not prove the source's release is current.
+
+Checks distinguish **not evaluated** (no readable snapshot or a missing join dependency), **unsupported** (CMS supplies no coordinates; the HRSA GIS view is not complete withdrawn history), and missing/invalid values in loaded records. Audits cover snapshot key duplicates, incomplete addresses, unknown emergency-services status, unresolved/conflicting county joins, invalid/missing accepted coordinates, changed hospital addresses, cached IDs absent from the current directory, and missing/invalid HRSA geometry. An Exact geocoder response remains an approximate address match; it is not a verified site and its coordinates are checked separately.
+
+Duplicate counts refer to saved snapshot keys. The importers reject duplicates before publishing; rejected-payload counts/reasons are not retained and must not be inferred as zero from a clean saved snapshot. Repeated HPSA designation IDs across distinct components are expected. County coverage distinguishes component/point rows from distinct discipline/designation pairs. A zero is only a count of records in a loaded snapshot, not evidence of no healthcare supply, no shortages or no demand. Unavailable snapshots have unevaluated county counts rather than zeros.
+
+**Download access-quality checks** exports counts, evaluation states and explanations. **Download access-quality findings** exports record IDs and controlled descriptions for review, with spreadsheet-formula escaping. Normal source gaps are not automatically labeled errors, and no combined quality score is calculated. Real access snapshots are not audited in synthetic demo mode.
+
+Reviewers can repeat the same local-only audit as JSON:
+
+```sh
+uv run python -m oregon_health.access_quality
+uv run python -m oregon_health.access_quality --directory /path/to/snapshots
+```
+
+The output uses JSON `null` for unevaluated counts, including a directory that does not exist. Source requests must be made separately through the existing importers or opt-in views. Synthetic tests cover unloaded/corrupt sources, duplicates versus valid component repetition, invalid and missing coordinates/geometry, changed-address joins, freshness versus source vintage, retained failures, safe exports and demo/read-only behavior.
+
+Example audit of cached public snapshots, captured 2026-10-22. Record counts and dates are illustrative; inspect the running app for its saved source state.
+
+![Healthcare-access snapshot quality report](docs/images/access-quality.png)
