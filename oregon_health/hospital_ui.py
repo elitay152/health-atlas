@@ -11,6 +11,7 @@ from oregon_health import hospitals
 from oregon_health.api_cache import RefreshLimited
 from oregon_health.profile import county_names
 from oregon_health.status import last_refresh
+from oregon_health.hospital_locations_ui import LABELS, render_locations
 
 UNKNOWN = "__unresolved__"
 
@@ -31,11 +32,20 @@ def filter_records(records, query="", county=None, types=()):
                 "facility_id", "name", "address", "city", "zip_code", "county", "hospital_type")).casefold())]
 
 
-def export_csv(records, provenance):
+def export_csv(records, provenance, locations=None, location_provenance=None):
     """Retain source fields/provenance and neutralize spreadsheet formulas."""
     columns = [*hospitals.COLUMNS, "emergency_status", "coordinate_status",
-               "dataset", "source_url", "released", "modified", "fetched_at", "sha256"]
-    rows = [{**r, "emergency_status": emergency_label(r["emergency_services"]),
+               "dataset", "source_url", "released", "modified", "fetched_at", "sha256",
+               "longitude", "latitude", "location_status", "matched_address",
+               "location_source", "location_benchmark", "location_benchmark_id", "location_fetched_at", "location_address_hash"]
+    def location_fields(record):
+        location = (locations or {}).get(record["facility_id"], {})
+        return {**{k: location.get(k) for k in ("longitude", "latitude", "matched_address")},
+                "location_status": location.get("location_status", "not_geocoded"),
+                "location_address_hash": location.get("address_hash"),
+                **{f"location_{name}": (location_provenance or {}).get(key) for name, key in (
+                    ("source", "source_url"), ("benchmark", "benchmark"), ("benchmark_id", "benchmark_id"), ("fetched_at", "fetched_at"))}}
+    rows = [{**r, **location_fields(r), "emergency_status": emergency_label(r["emergency_services"]),
              "coordinate_status": "Not supplied by CMS",
              **{key: provenance[key] for key in columns if key in provenance}} for r in records]
     frame = pd.DataFrame(rows, columns=columns)
@@ -51,7 +61,7 @@ def _open_profile(fips):
     st.session_state["profile_county"] = fips
 
 
-def _detail(record, context_available):
+def _detail(record, context_available, location=None):
     st.markdown("#### Facility details")
     st.text(record["name"])
     st.caption(f"CMS Facility ID: {record['facility_id']} · This identifier is not an NPI.")
@@ -61,7 +71,14 @@ def _detail(record, context_available):
     st.text(f"Type: {record['hospital_type'] or 'Not reported'}")
     st.text(f"Ownership: {record['ownership'] or 'Not reported'}")
     st.text(f"Emergency services: {emergency_label(record['emergency_services'])}")
-    st.caption("CMS supplies no coordinates for these records. A verified marker location is not available yet.")
+    if location:
+        st.caption(f"Address location: {LABELS[location['location_status']]}")
+        if location["location_status"] == "matched_exact":
+            st.text(f"Matched address: {location['matched_address']}")
+            st.caption(f"Approximate point: {location['latitude']:.5f}, {location['longitude']:.5f}. "
+                       "Census address interpolation, not a verified building or entrance.")
+    else:
+        st.caption("CMS supplies no coordinates. Enable approximate hospital locations to request Census address matches.")
     fips = record["county_fips"]
     if fips in county_names() and context_available:
         st.button(f"View {county_names()[fips]} County profile", key="hospital_open_county",
@@ -133,7 +150,7 @@ def render_hospitals(demo=False, context_available=True):
         st.write("This directory covers hospitals listed by CMS, not every clinic or facility campus. No listed hospitals in a county does not mean no healthcare services. Listings and emergency-services status do not establish current capacity, specialty availability, unmet demand or purchase intent.")
         st.caption(f"Unresolved county links: {report['unresolved_counties']} · Incomplete addresses: {report['missing_address']} · "
                    f"Emergency services not reported: {report['unknown_emergency_services']}. "
-                   "No coordinates are supplied by this source. Facility IDs are source strings, not NPIs.")
+                   "CMS supplies no coordinates; optional Census address matches are separate. Facility IDs are source strings, not NPIs.")
         st.dataframe(pd.DataFrame(report["counties"]).rename(columns={
             "fips": "County FIPS", "county": "County", "listed_hospitals": "CMS-listed hospitals"}), hide_index=True)
         st.caption("Source refreshes are typically quarterly and may change. The app reuses downloads for 24 hours; refresh attempts share a five-minute limit. CMS public reporting data are in the public domain; no government endorsement is implied.")
@@ -155,6 +172,7 @@ def render_hospitals(demo=False, context_available=True):
     if not filtered:
         st.info("No listed hospitals match these filters. Try another county or clear the search and type filters. This does not establish an absence of healthcare services.")
         return
+    locations, location_provenance = render_locations(records, filtered)
     table_col, detail_col = st.columns([1.5, 1], gap="large")
     with table_col:
         frame = pd.DataFrame([{
@@ -164,7 +182,7 @@ def render_hospitals(demo=False, context_available=True):
         } for r in filtered])
         st.dataframe(frame, hide_index=True, width="stretch", key="hospital_results",
                      column_config={"Facility ID": st.column_config.TextColumn("Facility ID")})
-        st.download_button("Download filtered hospital CSV", export_csv(filtered, provenance),
+        st.download_button("Download filtered hospital CSV", export_csv(filtered, provenance, locations, location_provenance),
                            "health-atlas-oregon-hospitals.csv", "text/csv", key="hospital_download")
         st.caption("Download includes source fields, release dates and fetch provenance. Spreadsheet formulas are escaped; import ID and ZIP columns as text to retain leading zeros.")
     with detail_col:
@@ -176,6 +194,6 @@ def render_hospitals(demo=False, context_available=True):
                                 key="hospital_detail", placeholder="Select a listed hospital")
         if selected:
             with st.container(border=True):
-                _detail(by_id[selected], context_available)
+                _detail(by_id[selected], context_available, locations.get(selected))
         else:
             st.info("Choose a hospital to see its reported attributes and county context.")

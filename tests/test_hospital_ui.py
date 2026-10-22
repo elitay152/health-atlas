@@ -169,3 +169,81 @@ def test_directory_remains_available_without_cdc(tmp_path, monkeypatch):
     assert not app.exception and len(result_table(app)) == 3
     app.selectbox(key="hospital_detail").set_value("003801").run()
     assert any("County profiles need CDC health data" in i.value for i in app.info)
+
+
+def geocode_cache(tmp_path, monkeypatch):
+    from oregon_health import geocoding
+    path=tmp_path/"locations.duckdb"
+    monkeypatch.setattr(geocoding,"DB_PATH",path)
+    rows=records()
+    matches=[(r["facility_id"],geocoding.address_hash(r),
+              "matched_exact" if index<2 else "missing_address",
+              [-123.08,-122.65,None][index], [44.05,45.52,None][index],
+              r["address"] if index<2 else None) for index,r in enumerate(rows)]
+    provenance=dict(source_url=geocoding.SOURCE_URL,benchmark=geocoding.BENCHMARK,benchmark_id="4",
+                    fetched_at=datetime.now(timezone.utc),fingerprint=geocoding.fingerprint(rows))
+    geocoding.store(matches,provenance,path)
+    return path,provenance
+
+
+def test_optional_location_map_details_and_export(tmp_path,monkeypatch):
+    from oregon_health import geocoding
+    app,_=make_app(tmp_path,monkeypatch)
+    path,provenance=geocode_cache(tmp_path,monkeypatch)
+    def forbidden(*a,**kw):raise AssertionError("Fresh matches must not call Census")
+    monkeypatch.setattr(geocoding,"refresh",forbidden)
+    app.run().checkbox(key="show_hospitals").check().run()
+    app.checkbox(key="show_hospital_locations").check().run()
+    assert not app.exception
+    assert any("2 of 3 filtered hospitals have mapped" in c.value for c in app.caption)
+    app.selectbox(key="hospital_detail").set_value("003801").run()
+    assert any("not a verified building or entrance" in c.value for c in app.caption)
+    locations,_=geocoding.snapshot(records(),path)
+    exported=pd.read_csv(io.StringIO(export_csv(records(),source(),locations,provenance)),dtype=str,keep_default_na=False)
+    assert exported.location_status.tolist()==["matched_exact","matched_exact","missing_address"]
+    assert exported.longitude.iloc[0]=="-123.08" and exported.longitude.iloc[2]==""
+    assert set(exported.location_source)=={geocoding.SOURCE_URL}
+    app.selectbox(key="hospital_county").set_value(UNKNOWN).run()
+    assert any("No accepted address matches" in i.value for i in app.info)
+    assert not app.exception
+
+
+def test_geocoder_outage_keeps_directory_and_does_not_repeat_on_search(tmp_path,monkeypatch):
+    from oregon_health import geocoding
+    app,_=make_app(tmp_path,monkeypatch)
+    monkeypatch.setattr(geocoding,"DB_PATH",tmp_path/"no-locations.duckdb")
+    calls=[]
+    def offline(*a,**kw):
+        calls.append(True)
+        raise requests.ConnectionError("private diagnostic")
+    monkeypatch.setattr(geocoding,"refresh",offline)
+    app.run().checkbox(key="show_hospitals").check().run()
+    assert calls==[]
+    app.checkbox(key="show_hospital_locations").check().run()
+    app.text_input(key="hospital_query").set_value("Eugene").run()
+    assert not app.exception and len(result_table(app))==1 and len(calls)==1
+    assert any("No accepted address matches" in i.value for i in app.info)
+    assert "private diagnostic" not in " ".join(w.value for w in app.warning)
+    app.button(key="geocode_refresh").click().run()
+    assert len(calls)==2
+    app.sidebar.toggle(key="demo_mode").set_value(True).run()
+    assert not app.exception and len(calls)==2
+
+
+def test_cached_locations_retain_failure_warning_and_hide_changed_address(tmp_path,monkeypatch):
+    from oregon_health import geocoding
+    app,cms_path=make_app(tmp_path,monkeypatch)
+    path,provenance=geocode_cache(tmp_path,monkeypatch)
+    changed=records();changed[0]["address"]="Different source address"
+    hospitals.store([tuple(r[k] for k in hospitals.COLUMNS) for r in changed],source(),cms_path)
+    def offline(*a,**kw):
+        record_refresh(path,"xubh-q36u","failed")
+        raise requests.ConnectionError("Offline")
+    monkeypatch.setattr(geocoding,"refresh",offline)
+    app.run().checkbox(key="show_hospitals").check().run()
+    app.checkbox(key="show_hospital_locations").check().run()
+    assert not app.exception
+    assert any("1 of 3 filtered hospitals have mapped" in c.value for c in app.caption)
+    assert any("Only unchanged source addresses retain points" in w.value for w in app.warning)
+    app.selectbox(key="hospital_detail").set_value("003801").run()
+    assert any("Source address changed" in c.value for c in app.caption)
