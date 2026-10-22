@@ -17,6 +17,7 @@ from oregon_health.links import parse_counties, link_params
 from oregon_health.status_ui import render_data_status
 from oregon_health.charts import intervals, distribution, condition_profile, heatmap
 from oregon_health.hospital_ui import render_hospitals
+from oregon_health.hrsa_ui import render_hrsa
 
 def open_map_profile():
     fips = selected_county(st.session_state.get("county_map", {}))
@@ -44,7 +45,7 @@ st.set_page_config(page_title="Health Atlas", page_icon="🌲", layout="wide")
 st.caption("OREGON / COMMUNITY HEALTH")
 st.title("Health Atlas")
 st.write("Explore a county. Build a comparison. Share what you find.")
-st.markdown("[Map](#county-map) · [County profile](#county-profile) · [Comparison](#county-comparison) · [Hospitals](#hospital-directory) · [Data status](#data-status)")
+st.markdown("[Map](#county-map) · [County profile](#county-profile) · [Comparison](#county-comparison) · [Hospitals](#hospital-directory) · [Shortage designations](#shortage-designations) · [Data status](#data-status)")
 st.sidebar.header("Data settings")
 st.sidebar.markdown("[Data status & coverage](#data-status)")
 if "demo_mode" not in st.session_state:
@@ -85,6 +86,7 @@ else:
     path = DB_PATH
     if not path.exists():
         render_hospitals(context_available=False)
+        render_hrsa()
         render_data_status(DB_PATH, None, dataset)
         st.info("No CDC data has been downloaded yet. Try Refresh data after five minutes, or ask the maintainer to check the data source. You can also enable the clearly labeled synthetic demo.")
         st.stop()
@@ -283,6 +285,7 @@ with duckdb.connect(str(path), read_only=True) as db:
         st.query_params.from_dict(shared_view)
     st.markdown("[Back to map ↑](#county-map) · [Data status & sources](#data-status)")
 render_hospitals(use_demo)
+render_hrsa(use_demo)
 render_data_status(path, year, dataset, use_demo)
 st.caption("Population estimates, not individual diagnoses. County differences do not establish causes.")
 with st.expander("How to interpret these estimates"):
