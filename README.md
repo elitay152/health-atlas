@@ -250,3 +250,21 @@ The output uses JSON `null` for unevaluated counts, including a directory that d
 Example audit of cached public snapshots, captured 2026-10-22. Record counts and dates are illustrative; inspect the running app for its saved source state.
 
 ![Healthcare-access snapshot quality report](docs/images/access-quality.png)
+
+## Tract health estimates (importer)
+
+The standalone tract importer prepares the next stage of local exploration; it does not change the app's county views yet. It uses the official [CDC PLACES 2025 tract release](https://data.cdc.gov/d/cwsq-ngmh), with no API key or new network domain:
+
+```sh
+uv run python -m oregon_health.tracts
+# Optional: choose a snapshot location, or refresh within the daily cache window
+uv run python -m oregon_health.tracts --path /path/to/tracts.duckdb --refresh
+```
+
+The separate ignored `data/tracts.duckdb` stores the existing nine conditions, 11-digit text tract GEOIDs, county prefixes, measure definitions, estimate years, percent units, adult crude-prevalence labels, 95% confidence limits, source population fields and any unavailability footnotes. Null estimates/intervals remain null; omitted tracts are not invented as zero or automatically labeled suppressed. `tract_estimates` and `tract_provenance` are separate from the county database and query paths. Python callers can use `oregon_health.tracts.estimates(county_fips, measure, year, path)` and `coverage(path)` without triggering network requests or creating a missing snapshot.
+
+The verified 2026-10-22 baseline is **993 Oregon tracts / 8,937 estimates**, all nine measures with estimate year **2023**. These are observed counts, not permanent requirements. Release year, estimate year, successful UTC fetch time and source revision are stored separately. Provenance also retains official source/metadata links, CDC attribution, source license ID, catalog, response bytes and recommended boundary vintage. The source is Public Domain. Other measures have different estimate years; seven extra fields in the GIS-friendly companion currently have no Oregon estimates.
+
+Imports use deterministic 1,000-row pages, a preflight row count, at most 50,000 rows and 20 MB of page/count responses (each response capped at 2 MB). Source revision is checked before/after pagination; count mismatches, duplicate keys, invalid geography/intervals and incomplete responses reject the replacement. Transient network failures and HTTP 429/502/503/504 receive at most three attempts per request with short backoff. A successful snapshot is published atomically only after validation. The daily cache and shared five-minute refresh cooldown reduce repeat requests; failures retain the previous snapshot and record a controlled refresh outcome. CLI failures report a generic error instead of exception URLs.
+
+Compatible **2023 Census tract boundaries** will be added separately in [#25](https://github.com/elitay152/health-atlas/issues/25). All 993 observed CDC tracts join to that vintage; one additional boundary has no CDC record and must remain unavailable. Coverage here reports saved rows and available estimates by county/measure/year, not boundary completeness. Postal ZIP codes and ZCTAs are not tract identifiers. County and tract products must not be interchanged or combined by averaging percentages. Modeled resident prevalence does not describe individual patients, facility demand, purchase intent or local intervention effects; retain uncertainty in future displays.
