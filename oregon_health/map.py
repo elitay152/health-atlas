@@ -51,3 +51,41 @@ def county_deck(frame, selected):
         map_provider=None, map_style=None,
         tooltip={"text": "{name} County\nPrevalence: {estimate}\n95% confidence interval: {interval}"},
     )
+
+
+def hospital_deck(records, selected=None):
+    """Approximate address points over county boundaries; no prevalence encoding."""
+    collection = deepcopy(boundaries())
+    for feature in collection["features"]:
+        props = feature["properties"]
+        props.update(name=f"{props['name']} County", detail="Generalized county boundary")
+    points = [{**r, "detail": f"Approximate address match · {r['matched_address']}",
+               "color": [23, 107, 99, 255] if r["facility_id"] == selected else [184, 106, 64, 235]}
+              for r in records]
+    return pdk.Deck(
+        layers=[
+            pdk.Layer("GeoJsonLayer", collection, id="hospital-counties", pickable=False,
+                      get_fill_color=[234, 237, 229, 160], get_line_color=[92, 120, 96, 170],
+                      line_width_min_pixels=1),
+            pdk.Layer("ScatterplotLayer", points, id="hospital-points", pickable=True,
+                      get_position="[longitude, latitude]", get_fill_color="color",
+                      get_line_color=[250, 249, 244], stroked=True, line_width_min_pixels=1,
+                      get_radius=500, radius_min_pixels=6, radius_max_pixels=12),
+        ],
+        initial_view_state=pdk.ViewState(latitude=44.15, longitude=-120.55, zoom=4.8, min_zoom=4, max_zoom=13),
+        map_provider=None, map_style=None,
+        tooltip={"text": "{name}\n{detail}"},
+    )
+
+
+def selected_hospital(event, allowed_ids):
+    """Only accept a current filtered facility ID from the expected point layer."""
+    if not isinstance(event, dict):
+        return None
+    selection = event.get("selection")
+    objects = selection.get("objects") if isinstance(selection, dict) else None
+    points = objects.get("hospital-points") if isinstance(objects, dict) else None
+    if not isinstance(points, list) or not points or not isinstance(points[0], dict):
+        return None
+    value = points[0].get("facility_id")
+    return value if isinstance(value, str) and value in allowed_ids else None
