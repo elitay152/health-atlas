@@ -19,6 +19,7 @@ from oregon_health.charts import intervals, distribution, condition_profile, hea
 from oregon_health.hospital_ui import render_hospitals
 from oregon_health.hrsa_ui import render_hrsa
 from oregon_health.tract_ui import render_tracts
+from oregon_health.interpretation import render_interpretation
 
 def open_map_profile():
     fips = selected_county(st.session_state.get("county_map", {}))
@@ -125,6 +126,7 @@ with duckdb.connect(str(path), read_only=True) as db:
     frame = comparison(db, measure, year)
     st.subheader(f"{MEASURES[measure]} · {year}")
     st.caption("Modeled estimates for adults · Choose a measure and year, then a county.")
+    st.caption("Crude rates reflect age composition. Read 95% intervals alongside the estimates; a higher rate alone does not establish greater healthcare demand.")
     if not frame.empty:
         st.caption(f"{len(frame)} Oregon counties · County estimates range from {frame.prevalence.min():.1f}% to {frame.prevalence.max():.1f}%.")
     options = sorted(frame.county)
@@ -290,6 +292,4 @@ render_hospitals(use_demo)
 render_hrsa(use_demo)
 render_data_status(path, year, dataset, use_demo)
 st.caption("Population estimates, not individual diagnoses. County differences do not establish causes.")
-with st.expander("How to interpret these estimates"):
-    st.info("PLACES estimates are modeled population measures, not individual diagnoses. Crude estimates reflect differences in age composition; use caution comparing counties. Differences and associations do not establish causes. Consult confidence intervals and CDC methodology before interpreting results.")
-    st.link_button("CDC PLACES data and methodology", "https://www.cdc.gov/places/")
+render_interpretation()
