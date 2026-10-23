@@ -331,3 +331,19 @@ The summary provides:
 Example using saved public sources for Lane and Multnomah counties; source dates and coverage must be checked in the running app:
 
 ![Service-area summary](docs/images/service-area-summary.png)
+
+## Compare service areas
+
+Enable **Compare with a second service area** below the primary area definition. **Area A** uses that primary county set and the page's estimate year. Choose **Area B counties** or load a compatible saved county definition in **Load saved Area B**, then choose its estimate year. Both areas read saved sources only; no requests or refreshes are initiated by the comparison. Empty sets remain shareable but are not summarized. Demo mode disables the area feature.
+
+The comparison shows population/listing/approximate-point context with units, county condition charts on a common **0–100%** scale, and detailed rows with estimate periods, confidence limits/MOEs, source states and dates. It flags unlike years/ACS periods, incomplete health/demographic coverage, unavailable sources and differing saved source snapshots. It does not calculate changes, rankings, statistical significance, area-wide health rates or an opportunity score. Supply indicators are source record counts, not verified capacity, utilization or commercial demand.
+
+Shared counties are listed explicitly. Shared CMS IDs, accepted approximate point IDs and discipline/HPSA IDs are reported separately; missing source dependencies produce **Not evaluated**, not zero overlap. HRSA designations can span both areas even when their county sets are disjoint. Shared populations/facilities must not be added as separate totals. County health and demographic values retain their original source grain and uncertainty; the population aggregation limits from the summary still apply.
+
+Copy the address to restore both county sets and years. Existing `area`/`area_rev` describe A; `area_compare=1`, `area_b`, `area_b_rev` and `area_b_year` describe B. Each definition is checked against the current boundary revision, and invalid/unsupported links are explained rather than partially loaded. Links use current saved sources rather than pinning historical health data.
+
+**Download area comparison CSV** produces long-form rows with area membership/revision, shared-county flags, shared source IDs/warnings, units, periods, interval limits, MOEs/confidence levels, missing states and source provenance. Spreadsheet-formula prefixes in text are escaped; import geography/identifier columns as text. Source-snapshot record counts are explicitly statewide coverage metadata, not area totals. **Download area comparison JSON** retains both full definitions/reports and shared IDs. Health rows are county-specific; HRSA rows retain discipline/category/status. JSON is the complete reproducibility record, including unsupported aggregations.
+
+Example with overlapping Lane/Multnomah and Clackamas/Multnomah definitions:
+
+![Service-area comparison](docs/images/service-area-comparison.png)
