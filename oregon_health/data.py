@@ -3,6 +3,7 @@ import math
 from pathlib import Path
 
 import duckdb
+from oregon_health.regions import OREGON, get_region, health_path, check_identity
 
 MEASURES = {
     "DIABETES": "Diabetes", "CASTHMA": "Current asthma", "OBESITY": "Obesity",
@@ -13,17 +14,19 @@ CATALOG = ",".join(MEASURES)
 DB_PATH = Path(__file__).resolve().parents[1] / "data" / "oregon.duckdb"
 
 
-def normalize(rows):
+def normalize(rows, *, region=OREGON):
+    region=get_region(region)
+    expected=region.counties()
     records = []
     seen = set()
     for row in rows:
-        if row.get("stateabbr") != "OR" or row.get("measureid") not in MEASURES:
+        if row.get("stateabbr") != region.abbr or row.get("measureid") not in MEASURES:
             continue
         if row.get("data_value_type") != "Crude prevalence":
             continue
         fips = str(row["locationid"]).zfill(5)
-        if len(fips) != 5 or not fips.isdigit() or not fips.startswith("41"):
-            raise ValueError(f"Invalid Oregon county FIPS: {fips}")
+        if fips not in expected:
+            raise ValueError(f"Invalid {region.name} county FIPS: {fips}")
         value = row.get("data_value")
         if value in (None, ""):
             continue  # Suppressed/missing estimates are not zero.
@@ -39,25 +42,32 @@ def normalize(rows):
         seen.add(key)
         records.append((fips, row["locationname"], row["measureid"], year, value, low, high))
     if not records:
-        raise ValueError("No usable Oregon crude-prevalence records found")
+        raise ValueError(f"No usable {region.name} crude-prevalence records found")
     return records
 
 
-def store(rows, source, path=DB_PATH):
-    records = normalize(rows)
+def store(rows, source, path=None, *, region=OREGON):
+    region=get_region(region)
+    region.require("county_health")
+    records = normalize(rows,region=region)
+    path=path if path is not None else (DB_PATH if region==OREGON else health_path(region))
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    existed=path.exists()
     with duckdb.connect(str(path)) as db:
+        if existed:
+            check_identity(db,region)
         db.execute("BEGIN")
         db.execute("CREATE OR REPLACE TABLE estimates (fips VARCHAR, county VARCHAR, measure VARCHAR, year INTEGER, prevalence DOUBLE, low DOUBLE, high DOUBLE, PRIMARY KEY (fips, measure, year))")
         db.executemany("INSERT INTO estimates VALUES (?, ?, ?, ?, ?, ?, ?)", records)
-        db.execute("CREATE OR REPLACE TABLE provenance (source VARCHAR, imported_at TIMESTAMP, catalog VARCHAR)")
-        db.execute("INSERT INTO provenance VALUES (?, current_timestamp, ?)", [source, CATALOG])
+        db.execute("CREATE OR REPLACE TABLE provenance (source VARCHAR, imported_at TIMESTAMP, catalog VARCHAR, state_fips VARCHAR)")
+        db.execute("INSERT INTO provenance VALUES (?, current_timestamp, ?, ?)", [source, CATALOG, region.state_fips])
         db.execute("COMMIT")
     return len(records)
 
 
-def comparison(db, measure, year):
+def comparison(db, measure, year, *, region=OREGON):
+    check_identity(db,region)
     return db.execute("""
         SELECT fips, county, prevalence, low, high
         FROM estimates WHERE measure = ? AND year = ?
@@ -77,8 +87,9 @@ def demo_rows():
     return rows
 
 
-def county_profile(db, fips, year):
+def county_profile(db, fips, year, *, region=OREGON):
     """A single year's estimates; absent measures remain absent, never zero."""
+    check_identity(db,region)
     return db.execute("""
         SELECT measure, prevalence, low, high
         FROM estimates

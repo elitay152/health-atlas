@@ -347,3 +347,27 @@ Copy the address to restore both county sets and years. Existing `area`/`area_re
 Example with overlapping Lane/Multnomah and Clackamas/Multnomah definitions:
 
 ![Service-area comparison](docs/images/service-area-comparison.png)
+
+## Region configuration (Oregon deployment, Washington development target)
+
+`oregon_health.regions` defines explicit state abbreviations/FIPS, expected county catalogs, map centers/bounds, source coverage and deployment status. Oregon remains the deployed explorer. Washington is prepared for **county CDC health and ACS context** only; tract, hospital/geocoder, HRSA and service-area paths remain Oregon-specific. A `state=WA` link shows a development notice before any Oregon source/cache is requested. Unsupported state codes are rejected; there is no global environment switch that silently repoints existing views.
+
+Inspect a region without network requests:
+
+```sh
+uv run python -m oregon_health.regions --region WA
+```
+
+Import the prepared county source explicitly:
+
+```sh
+uv run python -m oregon_health.import_data --dataset swc5-untb --region WA
+```
+
+Python county and ACS functions accept a keyword `region` from `get_region("WA")`: `import_data.fetch`, `data.normalize/store/comparison/county_profile`, `api_cache.needs_refresh/refresh`, `census.normalize/fetch/store/context`, county maps/selectors and data-coverage reports. The registry is validated before region fields are used in source queries or paths. Washington fixtures expect 39 counties rather than Oregon's 36; incomplete ACS responses are rejected against the configured catalog. `region.require(source)` rejects unprepared source capabilities.
+
+Oregon keeps its existing `data/oregon.duckdb`, `data/census_<year>.duckdb`, refresh/status files, layer IDs and links without a state parameter. Washington defaults to **`data/regions/wa/counties.duckdb`** and **`data/regions/wa/census_<year>.duckdb`**, with separate refresh reservations/status files. Explicit custom paths remain supported, but a snapshot belonging to another state is rejected before refresh/read or replacement. New county/ACS provenance records state FIPS. Legacy provenance without a state marker is treated as Oregon only; it remains readable and receives the explicit marker on a successful refresh, with no bulk rename or destructive migration.
+
+Generic county links can include `state=WA`; their county IDs are validated with the corresponding catalog when parsed. Oregon links retain their prior format. The live app deliberately gates undeployed regions rather than falling back to Oregon. Washington demo/tract links are not generated. Source coverage flags describe prepared capabilities, not nationwide availability. Advancing production coverage requires the scaling/budget work in #32 and rollout verification in #33, including adapting the Oregon-specific source views where needed.
+
+Verified 2026-10-23: Washington CDC 2025 county release returned **351 estimates / 39 counties** for the nine curated conditions, and ACS 2023 returned all **39 counties** with estimate/MOE fields. Live checks used separate ignored Washington caches. The Washington county asset comes from the same pinned MIT-licensed Plotly source; see [boundary provenance](assets/README.md#washington-county-boundaries-development-target). Synthetic two-region fixtures and Oregon regressions cover cache identities, legacy migration, source filters, geography counts, maps, links and the production gate.

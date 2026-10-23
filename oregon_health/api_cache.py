@@ -10,6 +10,7 @@ import duckdb
 from oregon_health.data import CATALOG, DB_PATH, store
 from oregon_health.import_data import fetch
 from oregon_health.status import record_refresh
+from oregon_health.regions import OREGON, get_region, health_path, check_identity
 
 DEFAULT_DATASET = "swc5-untb"
 CACHE_TTL = timedelta(hours=24)
@@ -28,10 +29,13 @@ def catalog_is_current(path):
         return "catalog" in columns and db.execute("SELECT catalog FROM provenance").fetchone()[0] == CATALOG
 
 
-def needs_refresh(dataset, path=DB_PATH, now=None):
+def needs_refresh(dataset, path=None, now=None, *, region=OREGON):
+    region=get_region(region)
+    path=path if path is not None else (DB_PATH if region==OREGON else health_path(region))
     if not catalog_is_current(path):
         return True
     with duckdb.connect(str(path), read_only=True) as db:
+        check_identity(db,region)
         source, imported = db.execute("SELECT source, imported_at FROM provenance").fetchone()
     return f"https://data.cdc.gov/d/{dataset}" not in source or (now or datetime.now(timezone.utc)) - imported.replace(tzinfo=timezone.utc) >= CACHE_TTL
 
@@ -53,12 +57,19 @@ def _reserve_refresh(path):
         raise RefreshLimited("Refresh is busy. Please try again shortly.") from exc
 
 
-def refresh(dataset, path=DB_PATH):
+def refresh(dataset, path=None, *, region=OREGON):
     """Limit all sources together; a failed download leaves the cache untouched."""
+    region=get_region(region)
+    region.require("county_health")
+    path=path if path is not None else (DB_PATH if region==OREGON else health_path(region))
+    # Reject a foreign cache before reserving or making a request.
+    if Path(path).exists():
+        with duckdb.connect(str(path),read_only=True) as previous:
+            check_identity(previous,region)
     _reserve_refresh(path)
     try:
-        rows, source = fetch(dataset)
-        count = store(rows, source, path)
+        rows, source = fetch(dataset) if region==OREGON else fetch(dataset,region=region)
+        count = store(rows, source, path,region=region)
     except Exception:
         record_refresh(path, dataset, "failed")
         raise
