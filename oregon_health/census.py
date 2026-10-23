@@ -3,12 +3,13 @@ from datetime import datetime, timedelta, timezone
 import math
 import logging
 from pathlib import Path
-import tempfile
 import os
 
 import duckdb
 import requests
 
+from oregon_health.network import get_json
+from oregon_health.storage import snapshot
 from oregon_health.api_cache import _reserve_refresh
 from oregon_health.data import DB_PATH
 from oregon_health.regions import OREGON, get_region, cache_dir as region_cache_dir, check_identity
@@ -75,12 +76,8 @@ class CensusKeyRequired(CensusUnavailable):
 
 def _get_json(url, params=None):
     try:
-        response = requests.get(url, params=params, timeout=(5, 30), allow_redirects=False)
-        response.raise_for_status()
-        if 300 <= response.status_code < 400:
-            raise CensusUnavailable("Census rejected the request; check API access and key configuration.")
-        return response.json()
-    except requests.RequestException:
+        return get_json(url, params, max_bytes=4_000_000 if url.endswith('variables.json') else 1_000_000)
+    except (requests.RequestException, ValueError):
         # Requests exceptions may contain ?key=...; do not retain their chain.
         raise CensusUnavailable("Census request failed; check API access and key configuration.") from None
 
@@ -114,23 +111,15 @@ def store(records, year, path, *, region=OREGON):
     if any(r[0] not in county_names(region) for r in records):
         raise ValueError("Census records belong to another region")
     path = Path(path)
-    if path.exists():
-        with duckdb.connect(str(path),read_only=True) as previous:
-            check_identity(previous,region)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    handle, filename = tempfile.mkstemp(dir=path.parent, suffix=".duckdb")
-    os.close(handle)
-    temp = Path(filename)
-    temp.unlink()
-    try:
+    def validate(previous):
+        with duckdb.connect(str(previous), read_only=True) as db:
+            check_identity(db, region)
+    with snapshot(path, validate) as temp:
         with duckdb.connect(str(temp)) as db:
             db.execute("CREATE TABLE demographics (fips VARCHAR PRIMARY KEY, population BIGINT, population_moe BIGINT, age65_pct DOUBLE, age65_moe DOUBLE, poverty_pct DOUBLE, poverty_moe DOUBLE)")
             db.executemany("INSERT INTO demographics VALUES (?, ?, ?, ?, ?, ?, ?)", records)
             db.execute("CREATE TABLE provenance (year INTEGER, source VARCHAR, imported_at TIMESTAMP, state_fips VARCHAR)")
             db.execute("INSERT INTO provenance VALUES (?, ?, current_timestamp, ?)", [year, release_url(year), region.state_fips])
-        os.replace(temp, path)
-    finally:
-        temp.unlink(missing_ok=True)
 
 
 def context(fips, year, cache_dir=None, api_key=None, *, region=OREGON):
@@ -159,7 +148,7 @@ def context(fips, year, cache_dir=None, api_key=None, *, region=OREGON):
             records=fetch(year,api_key=api_key) if region==OREGON else fetch(year,api_key=api_key,region=region)
             store(records, year, path,region=region)
             record_refresh(path, year, "success")
-        except (requests.RequestException, ValueError, KeyError, TypeError, duckdb.Error):
+        except (requests.RequestException, ValueError, KeyError, TypeError, OSError, duckdb.Error):
             if attempted:
                 record_refresh(path, year, "failed")
             if not path.exists():

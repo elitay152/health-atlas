@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 
 import duckdb
@@ -42,6 +43,9 @@ def test_fetch_checks_variable_meaning_and_oregon_scope(monkeypatch):
     variables["DP05_0024PE"]["label"] = "Percent!!65 years and over"
     variables["DP03_0128PE"]["label"] = "Percent!!All people"
     class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def iter_content(self, chunk_size): yield json.dumps(self.value).encode()
         status_code = 200
         def __init__(self, value):
             self.value = value
@@ -164,6 +168,8 @@ def test_key_requirements_and_error_redaction(monkeypatch):
 def test_key_is_only_sent_to_data_endpoint_and_redirects_are_disabled(monkeypatch):
     calls = []
     class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
         status_code = 302
         def raise_for_status(self):
             pass

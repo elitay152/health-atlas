@@ -14,6 +14,7 @@ import tempfile
 import duckdb
 import requests
 
+from oregon_health.network import reserve_request
 from oregon_health.api_cache import _reserve_refresh
 from oregon_health.data import DB_PATH as HEALTH_PATH
 from oregon_health.profile import county_names
@@ -36,6 +37,7 @@ MAX_FEATURES = 5000
 
 def _get(path, params=None):
     """Only fixed HRSA service paths; reject redirects and bound decoded bytes."""
+    reserve_request(BASE + path)
     with requests.get(BASE + path, params={"f": "json", **(params or {})}, timeout=(5, 60),
                       allow_redirects=False, stream=True) as response:
         response.raise_for_status()

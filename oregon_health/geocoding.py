@@ -16,6 +16,7 @@ import tempfile
 import duckdb
 import requests
 
+from oregon_health.network import reserve_request
 from oregon_health.api_cache import _reserve_refresh
 from oregon_health.data import DB_PATH as HEALTH_PATH
 from oregon_health.map import boundaries
@@ -136,6 +137,7 @@ def fetch(records):
     benchmark_id = None
     matches = []
     if requested:
+        reserve_request(BENCHMARK_URL)
         raw = _read(requests.get(BENCHMARK_URL, params={"format": "json"},
                                 timeout=(5, 30), allow_redirects=False, stream=True), 100_000)
         choices = [b for b in json.loads(raw)["benchmarks"] if b["benchmarkName"] == BENCHMARK]
@@ -146,6 +148,7 @@ def fetch(records):
         writer = csv.writer(output)
         for facility_id, r in requested.items():
             writer.writerow([facility_id, r["address"], r["city"], "OR", r["zip_code"]])
+        reserve_request(BATCH_URL)
         raw = _read(requests.post(BATCH_URL, data={"benchmark": benchmark_id},
                                  files={"addressFile": ("hospitals.csv", output.getvalue().encode(), "text/csv")},
                                  timeout=(5, 60), allow_redirects=False, stream=True), 1_000_000)

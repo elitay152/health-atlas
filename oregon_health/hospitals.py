@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 import duckdb
 import requests
 
+from oregon_health.network import reserve_request
 from oregon_health.api_cache import _reserve_refresh
 from oregon_health.data import DB_PATH as HEALTH_PATH
 from oregon_health.profile import county_names
@@ -52,6 +53,7 @@ def _cms_url(url):
 
 def _download(url, limit):
     """Bound decompressed bytes and reject redirects, including metadata URLs."""
+    reserve_request(_cms_url(url))
     with requests.get(_cms_url(url), timeout=(5, 30), stream=True, allow_redirects=False) as response:
         response.raise_for_status()
         if response.status_code != 200:

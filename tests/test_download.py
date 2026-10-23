@@ -1,3 +1,4 @@
+import json
 import pytest
 import requests
 from oregon_health.import_data import fetch
@@ -8,6 +9,10 @@ def test_download_checks_metadata_and_filters(monkeypatch):
     calls = []
 
     class Response:
+        status_code = 200
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def iter_content(self, chunk_size): yield json.dumps(self.data).encode()
         def __init__(self, data):
             self.data = data
         def raise_for_status(self):
@@ -39,6 +44,10 @@ def test_download_propagates_network_errors(monkeypatch):
 
 def test_download_rejects_oversized_result(monkeypatch):
     class Response:
+        status_code = 200
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def iter_content(self, chunk_size): yield json.dumps(self.value).encode()
         def __init__(self, value):
             self.value = value
         def raise_for_status(self):

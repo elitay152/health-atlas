@@ -84,7 +84,7 @@ if not use_demo:
             st.success(f"Downloaded {count} Oregon estimates from CDC.")
         except RefreshLimited as exc:
             st.info(str(exc))
-        except (requests.RequestException, ValueError, KeyError, TypeError, duckdb.Error):
+        except (requests.RequestException, ValueError, KeyError, TypeError, OSError, duckdb.Error):
             logging.getLogger(__name__).exception("CDC refresh failed")
             st.error("Could not refresh CDC data. Please try again later. Technical details are available in the server logs.")
             if DB_PATH.exists():
@@ -241,7 +241,7 @@ with duckdb.connect(str(path), read_only=True) as db:
                     st.caption("Census figures describe a five-year period and include residents of all ages. Poverty uses the population for whom poverty status is determined. CDC health measures describe adults. Census margins use 90% confidence; CDC intervals use 95%. These figures provide context and do not establish causes.")
             except CensusKeyRequired:
                 st.info("Census context is not configured yet. The site maintainer needs to add a Census API key in deployment secrets. Health estimates remain available.")
-            except (requests.RequestException, ValueError, KeyError, TypeError, duckdb.Error):
+            except (requests.RequestException, ValueError, KeyError, TypeError, OSError, duckdb.Error):
                 logging.getLogger(__name__).exception("Census context unavailable")
                 st.info("Census context is currently unavailable for this year. Health estimates and county comparisons remain available.")
         st.button("Add county to comparison", on_click=add_comparison, args=(names[fips],), disabled=names[fips] not in options or names[fips] in selected)
@@ -278,7 +278,7 @@ with duckdb.connect(str(path), read_only=True) as db:
                     st.warning("Census could not be refreshed. Some demographics use previously downloaded data; import dates are included in the CSV.")
             except CensusKeyRequired:
                 st.info("Census demographics need a key in deployment secrets. Health comparisons remain available.")
-            except (requests.RequestException, ValueError, KeyError, TypeError, duckdb.Error):
+            except (requests.RequestException, ValueError, KeyError, TypeError, OSError, duckdb.Error):
                 logging.getLogger(__name__).exception("Comparison demographics unavailable")
                 st.info("Some Census demographics are unavailable. Health comparisons remain available.")
         comparison_source, comparison_imported = db.execute("SELECT source, imported_at FROM provenance").fetchone()
