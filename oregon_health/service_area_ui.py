@@ -7,6 +7,7 @@ import streamlit as st
 from oregon_health import service_areas
 from oregon_health.map import boundaries
 from oregon_health.profile import county_names
+from oregon_health.service_area_summary_ui import render_summary
 
 
 def _activate():
@@ -33,7 +34,7 @@ def area_deck(codes):
         tooltip={'text':'{name} County · {fips}\n{membership}'})
 
 
-def render_service_area(demo=False):
+def render_service_area(demo=False, *, health_path=None, year=2023):
     st.divider()
     st.subheader('Define a service area',anchor='service-area')
     st.caption('Choose whole Oregon counties. This is an area you define, not a measured patient catchment or travel-time zone.')
@@ -80,4 +81,5 @@ def render_service_area(demo=False):
         st.write('These generalized display polygons come from the pinned Plotly county dataset under MIT terms. Their boundary vintage is unverified. A revised bundle requires review and redefinition; links and imported files do not silently switch boundaries. No area/perimeter, point-in-polygon eligibility or travel-time analysis is performed.')
         st.caption('No patient/client addresses, uploaded address lists, geocoding or drive-time service are used. This definition starts with county IDs; tract-based analytical areas require separately suitable geography.')
         st.link_button('Boundary source & MIT attribution',service_areas.SOURCE)
+    render_summary(codes,year,health_path)
     return service_areas.link_params(codes) if st.session_state.get('area_active') else {}

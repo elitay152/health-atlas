@@ -88,7 +88,7 @@ if use_demo:
 else:
     path = DB_PATH
     if not path.exists():
-        area_view = render_service_area()
+        area_view = render_service_area(health_path=DB_PATH)
         if dict(st.query_params) != area_view:
             st.query_params.from_dict(area_view)
         render_hospitals(context_available=False)
@@ -290,7 +290,7 @@ with duckdb.connect(str(path), read_only=True) as db:
     selected_fips = dict(zip(frame.county, frame.fips))
     shared_view = link_params([selected_fips[name] for name in selected], year, measure, use_demo, include_census, fips, **local_view)
     st.markdown("[Back to map ↑](#county-map) · [Data status & sources](#data-status)")
-area_view = render_service_area(use_demo)
+area_view = render_service_area(use_demo, health_path=path, year=year)
 shared_view.update(area_view)
 if dict(st.query_params) != shared_view:
     st.query_params.from_dict(shared_view)
