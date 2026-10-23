@@ -8,6 +8,7 @@ from oregon_health import service_areas
 from oregon_health.map import boundaries
 from oregon_health.profile import county_names
 from oregon_health.service_area_summary_ui import render_summary
+from oregon_health.service_area_compare_ui import render_comparison
 
 
 def _activate():
@@ -82,4 +83,9 @@ def render_service_area(demo=False, *, health_path=None, year=2023):
         st.caption('No patient/client addresses, uploaded address lists, geocoding or drive-time service are used. This definition starts with county IDs; tract-based analytical areas require separately suitable geography.')
         st.link_button('Boundary source & MIT attribution',service_areas.SOURCE)
     render_summary(codes,year,health_path)
-    return service_areas.link_params(codes) if st.session_state.get('area_active') else {}
+    compared=render_comparison(codes,year,health_path)
+    params=service_areas.link_params(codes) if st.session_state.get('area_active') else {}
+    # Include an explicit empty A when sharing an unfinished comparison.
+    if compared:
+        params=service_areas.link_params(codes)
+    return params | compared

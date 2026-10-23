@@ -180,7 +180,8 @@ def summarize(codes,year,*,cache_dir=None,health_path=None,now=None):
         if r['county_fips'] in codes:
             groups[(r['discipline'],r['category'],r['status'])].append(r)
     shortages=[dict(discipline=k[0],category=k[1],status=k[2],
-        designations=len({r['designation_id'] for r in rows}),components=len(rows),
+        designations=len({r['designation_id'] for r in rows}),
+        designation_ids=sorted({r['designation_id'] for r in rows}),components=len(rows),
         without_geometry=sum(r['geometry'] is None for r in rows)) for k,rows in sorted(groups.items())]
     return dict(area=service_areas.definition(codes),estimate_year=year,summary_as_of=now.isoformat(),sources=sources,
         health=health,demographics=demographics,

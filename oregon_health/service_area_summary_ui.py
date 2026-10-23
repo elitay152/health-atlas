@@ -59,7 +59,7 @@ def render_summary(codes,year,health_path=None):
     if hrsa_source['state']!='Loaded':
         st.info('HRSA records are not loaded or readable. No shortage count is inferred.')
     elif report['shortages']:
-        st.dataframe(pd.DataFrame(report['shortages']).rename(columns={
+        st.dataframe(pd.DataFrame(report['shortages']).drop(columns=['designation_ids']).rename(columns={
             'discipline':'Discipline','category':'Category','status':'Status',
             'designations':'Distinct HPSA IDs','components':'Component/point records','without_geometry':'Without geometry'}),hide_index=True)
     else:
