@@ -20,6 +20,7 @@ from oregon_health.hospital_ui import render_hospitals
 from oregon_health.hrsa_ui import render_hrsa
 from oregon_health.tract_ui import render_tracts
 from oregon_health.interpretation import render_interpretation
+from oregon_health.service_area_ui import render_service_area
 
 def open_map_profile():
     fips = selected_county(st.session_state.get("county_map", {}))
@@ -47,7 +48,7 @@ st.set_page_config(page_title="Health Atlas", page_icon="🌲", layout="wide")
 st.caption("OREGON / COMMUNITY HEALTH")
 st.title("Health Atlas")
 st.write("Explore a county. Build a comparison. Share what you find.")
-st.markdown("[Map](#county-map) · [County profile](#county-profile) · [Tracts](#tract-explorer) · [Comparison](#county-comparison) · [Hospitals](#hospital-directory) · [Shortage designations](#shortage-designations) · [Data status](#data-status)")
+st.markdown("[Map](#county-map) · [County profile](#county-profile) · [Tracts](#tract-explorer) · [Comparison](#county-comparison) · [Service area](#service-area) · [Hospitals](#hospital-directory) · [Shortage designations](#shortage-designations) · [Data status](#data-status)")
 st.sidebar.header("Data settings")
 st.sidebar.markdown("[Data status & coverage](#data-status)")
 if "demo_mode" not in st.session_state:
@@ -87,6 +88,9 @@ if use_demo:
 else:
     path = DB_PATH
     if not path.exists():
+        area_view = render_service_area()
+        if dict(st.query_params) != area_view:
+            st.query_params.from_dict(area_view)
         render_hospitals(context_available=False)
         render_hrsa()
         render_data_status(DB_PATH, None, dataset)
@@ -285,9 +289,11 @@ with duckdb.connect(str(path), read_only=True) as db:
     st.caption("Copy your browser’s address to share these counties and view settings. Links use the site’s current data release.")
     selected_fips = dict(zip(frame.county, frame.fips))
     shared_view = link_params([selected_fips[name] for name in selected], year, measure, use_demo, include_census, fips, **local_view)
-    if dict(st.query_params) != shared_view:
-        st.query_params.from_dict(shared_view)
     st.markdown("[Back to map ↑](#county-map) · [Data status & sources](#data-status)")
+area_view = render_service_area(use_demo)
+shared_view.update(area_view)
+if dict(st.query_params) != shared_view:
+    st.query_params.from_dict(shared_view)
 render_hospitals(use_demo)
 render_hrsa(use_demo)
 render_data_status(path, year, dataset, use_demo)
