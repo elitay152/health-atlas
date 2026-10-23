@@ -35,3 +35,13 @@ Verified against the 2025 CDC tract release: all **993** Oregon estimate GEOIDs 
 Standalone visual validation of the **bundled, transformed** artifact against a saved CDC snapshot: all 197 Multnomah tracts matched for diabetes, estimate year 2023. This preview checks the join and visible geometry, not a deployed app screen or an analysis of uncertainty.
 
 ![Multnomah tract-boundary join verification](../docs/images/tract-boundary-check.png)
+
+# Washington county boundaries (development target)
+
+`washington-counties.geojson` contains all **39** Washington counties filtered from the same Plotly dataset commit as the Oregon county asset: `0c447c47b757ad74edecab31f0d72f849d2e67c2`, retrieved 2026-10-23. Source:
+
+https://github.com/plotly/datasets/blob/0c447c47b757ad74edecab31f0d72f849d2e67c2/geojson-counties-fips.json
+
+The MIT notice in `BOUNDARIES-LICENSE.txt` applies. The transformation retains IDs beginning with `53`, reduces properties to `fips` and `name` (source `NAME`), sorts features by ID and writes compact JSON plus a trailing newline. Coordinates are unchanged longitude/latitude; no reprojection or additional simplification was performed. Boundary vintage remains **unverified**; these generalized display polygons are not a precise spatial eligibility or cadastral source.
+
+Artifact: **54,680 bytes**, SHA-256 `bcfe4e9b41f56419ece9807ce16ee5aac651ed293e72cc53105ef9102ca6e2fc`. Region validation checks unique five-digit IDs, the state prefix and coordinate bounds. This asset prepares a county-health/ACS development target; it does not enable Washington clinical/access, tract, service-area or production UI coverage.

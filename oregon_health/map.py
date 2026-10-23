@@ -1,10 +1,9 @@
 """Local county boundaries joined to estimates by FIPS; no tile service needed."""
 from copy import deepcopy
-from functools import lru_cache
-import json
 from pathlib import Path
 
 import pydeck as pdk
+from oregon_health.regions import OREGON, boundary_collection, get_region
 
 BOUNDARIES = Path(__file__).resolve().parents[1] / "assets" / "oregon-counties.geojson"
 LOW = (216, 237, 224)
@@ -12,14 +11,13 @@ HIGH = (16, 91, 83)
 MISSING = [220, 222, 216, 255]
 
 
-@lru_cache(maxsize=1)
-def boundaries():
-    return json.loads(BOUNDARIES.read_text())
+def boundaries(region=OREGON):
+    return boundary_collection(get_region(region))
 
 
-def county_features(frame, selected):
+def county_features(frame, selected, *, region=OREGON):
     """Return a fresh feature collection; never mutate the cached geometry."""
-    collection = deepcopy(boundaries())
+    collection = deepcopy(boundaries(region))
     estimates = {row.fips: row for row in frame.itertuples()}
     selected_fips = {row.fips for row in frame.itertuples() if row.county in selected}
     lower = float(frame.prevalence.min()) if not frame.empty else 0
@@ -38,16 +36,17 @@ def county_features(frame, selected):
     return collection
 
 
-def county_deck(frame, selected):
+def county_deck(frame, selected, *, region=OREGON):
+    region=get_region(region)
     return pdk.Deck(
         layers=[pdk.Layer(
-            "GeoJsonLayer", county_features(frame, selected), id="oregon-counties",
+            "GeoJsonLayer", county_features(frame, selected, region=region), id=region.layer,
             pickable=True, filled=True, stroked=True,
             get_fill_color="properties.color", get_line_color="properties.outline",
             get_line_width="properties.line_width", line_width_units="'pixels'", line_width_min_pixels=1, line_width_max_pixels=3,
             auto_highlight=True, highlight_color=[184, 106, 64, 80],
         )],
-        initial_view_state=pdk.ViewState(latitude=44.15, longitude=-120.55, zoom=4.8, min_zoom=4, max_zoom=10),
+        initial_view_state=pdk.ViewState(latitude=region.center[1], longitude=region.center[0], zoom=region.zoom, min_zoom=4, max_zoom=10),
         map_provider=None, map_style=None,
         tooltip={"text": "{name} County\nPrevalence: {estimate}\n95% confidence interval: {interval}"},
     )

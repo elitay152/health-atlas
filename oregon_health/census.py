@@ -11,6 +11,7 @@ import requests
 
 from oregon_health.api_cache import _reserve_refresh
 from oregon_health.data import DB_PATH
+from oregon_health.regions import OREGON, get_region, cache_dir as region_cache_dir, check_identity
 from oregon_health.profile import county_names
 from oregon_health.status import record_refresh
 
@@ -40,7 +41,8 @@ def _number(value, percentage=False):
     return number
 
 
-def normalize(payload):
+def normalize(payload, *, region=OREGON):
+    region=get_region(region)
     if not isinstance(payload, list) or not payload or not isinstance(payload[0], list):
         raise ValueError("Unexpected Census API response")
     header = payload[0]
@@ -53,13 +55,13 @@ def normalize(payload):
             raise ValueError("Malformed Census row")
         row = dict(zip(header, values))
         fips = str(row["state"]) + str(row["county"])
-        if fips not in county_names() or fips in seen:
-            raise ValueError("Unexpected or duplicate Oregon county in Census data")
+        if fips not in county_names(region) or fips in seen:
+            raise ValueError(f"Unexpected or duplicate {region.name} county in Census data")
         seen.add(fips)
         nums = [_number(row[field], percentage=index >= 2) for index, field in enumerate(FIELDS)]
         records.append((fips, *nums))
-    if seen != set(county_names()):
-        raise ValueError("Census data must include all 36 Oregon counties")
+    if seen != set(county_names(region)):
+        raise ValueError(f"Census data must include all {region.county_count} {region.name} counties")
     return records
 
 
@@ -93,20 +95,28 @@ def validate_variables(variables):
             raise ValueError("ACS variable definitions differ from the expected population, age and poverty measures")
 
 
-def fetch(year, api_key=None):
+def fetch(year, api_key=None, *, region=OREGON):
+    region=get_region(region)
+    region.require("census")
     url = release_url(year)
     key = api_key if api_key is not None else os.environ.get("CENSUS_API_KEY")
     if not key:
         raise CensusKeyRequired("A Census API key must be configured by the site maintainer.")
     # MOEs are often attributes of estimates, not top-level variable entries.
     validate_variables(_get_json(f"{url}/variables.json")["variables"])
-    payload = _get_json(url, params={"get": ",".join(["NAME", *FIELDS]), "for": "county:*", "in": "state:41", "key": key})
-    return normalize(payload)
+    payload = _get_json(url, params={"get": ",".join(["NAME", *FIELDS]), "for": "county:*", "in": f"state:{region.state_fips}", "key": key})
+    return normalize(payload,region=region)
 
 
-def store(records, year, path):
+def store(records, year, path, *, region=OREGON):
     """Publish a complete snapshot; readers and failed refreshes retain old data."""
+    region=get_region(region)
+    if any(r[0] not in county_names(region) for r in records):
+        raise ValueError("Census records belong to another region")
     path = Path(path)
+    if path.exists():
+        with duckdb.connect(str(path),read_only=True) as previous:
+            check_identity(previous,region)
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, filename = tempfile.mkstemp(dir=path.parent, suffix=".duckdb")
     os.close(handle)
@@ -116,22 +126,25 @@ def store(records, year, path):
         with duckdb.connect(str(temp)) as db:
             db.execute("CREATE TABLE demographics (fips VARCHAR PRIMARY KEY, population BIGINT, population_moe BIGINT, age65_pct DOUBLE, age65_moe DOUBLE, poverty_pct DOUBLE, poverty_moe DOUBLE)")
             db.executemany("INSERT INTO demographics VALUES (?, ?, ?, ?, ?, ?, ?)", records)
-            db.execute("CREATE TABLE provenance (year INTEGER, source VARCHAR, imported_at TIMESTAMP)")
-            db.execute("INSERT INTO provenance VALUES (?, ?, current_timestamp)", [year, release_url(year)])
+            db.execute("CREATE TABLE provenance (year INTEGER, source VARCHAR, imported_at TIMESTAMP, state_fips VARCHAR)")
+            db.execute("INSERT INTO provenance VALUES (?, ?, current_timestamp, ?)", [year, release_url(year), region.state_fips])
         os.replace(temp, path)
     finally:
         temp.unlink(missing_ok=True)
 
 
-def context(fips, year, cache_dir=None, api_key=None):
+def context(fips, year, cache_dir=None, api_key=None, *, region=OREGON):
     """Return county context and source metadata, with an optional stale warning."""
-    if fips not in county_names():
-        raise ValueError("Unknown Oregon county")
+    region=get_region(region)
+    region.require("census")
+    if fips not in county_names(region):
+        raise ValueError(f"Unknown {region.name} county")
     release_url(year)
-    path = Path(cache_dir if cache_dir is not None else DB_PATH.parent) / f"census_{year}.duckdb"
+    path = Path(cache_dir if cache_dir is not None else region_cache_dir(region,DB_PATH.parent)) / f"census_{year}.duckdb"
     stale = True
     if path.exists():
         with duckdb.connect(str(path), read_only=True) as db:
+            check_identity(db,region)
             imported = db.execute("SELECT imported_at FROM provenance").fetchone()[0]
         stale = datetime.now(timezone.utc) - imported.replace(tzinfo=timezone.utc) >= CACHE_TTL
     warning = None
@@ -143,7 +156,8 @@ def context(fips, year, cache_dir=None, api_key=None):
                 raise CensusKeyRequired("A Census API key must be configured by the site maintainer.")
             _reserve_refresh(path)
             attempted = True
-            store(fetch(year, api_key=api_key), year, path)
+            records=fetch(year,api_key=api_key) if region==OREGON else fetch(year,api_key=api_key,region=region)
+            store(records, year, path,region=region)
             record_refresh(path, year, "success")
         except (requests.RequestException, ValueError, KeyError, TypeError, duckdb.Error):
             if attempted:
@@ -153,7 +167,10 @@ def context(fips, year, cache_dir=None, api_key=None):
             logging.getLogger(__name__).warning("Census refresh failed; using cached data", exc_info=True)
             warning = "Census could not be refreshed. Showing previously downloaded demographics; check the import date."
     with duckdb.connect(str(path), read_only=True) as db:
+        check_identity(db,region)
         # LEFT JOIN keeps a missing county record visible as unavailable fields.
         row = db.execute("SELECT d.* FROM (SELECT ? AS fips) selected LEFT JOIN demographics d USING (fips)", [fips]).fetchone()
         source_year, source, imported = db.execute("SELECT year, source, imported_at FROM provenance").fetchone()
+    if source_year!=year:
+        raise ValueError("Census cache period differs from the requested release")
     return {**dict(zip(["fips", *COLUMNS], row)), "year": source_year, "source": source, "imported_at": imported, "warning": warning}

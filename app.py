@@ -21,6 +21,7 @@ from oregon_health.hrsa_ui import render_hrsa
 from oregon_health.tract_ui import render_tracts
 from oregon_health.interpretation import render_interpretation
 from oregon_health.service_area_ui import render_service_area
+from oregon_health.regions import OREGON, get_region
 
 def open_map_profile():
     fips = selected_county(st.session_state.get("county_map", {}))
@@ -49,6 +50,16 @@ st.caption("OREGON / COMMUNITY HEALTH")
 st.title("Health Atlas")
 st.write("Explore a county. Build a comparison. Share what you find.")
 st.markdown("[Map](#county-map) · [County profile](#county-profile) · [Tracts](#tract-explorer) · [Comparison](#county-comparison) · [Service area](#service-area) · [Hospitals](#hospital-directory) · [Shortage designations](#shortage-designations) · [Data status](#data-status)")
+try:
+    requested_region=get_region(st.query_params.get("state","OR"))
+except ValueError:
+    st.info("That region is not supported. This deployment currently serves Oregon.")
+    st.link_button("Open Oregon explorer", "?")
+    st.stop()
+if not requested_region.deployed:
+    st.info(f"{requested_region.name} is prepared for development, but this deployment currently serves Oregon.")
+    st.link_button("Open Oregon explorer", "?")
+    st.stop()
 st.sidebar.header("Data settings")
 st.sidebar.markdown("[Data status & coverage](#data-status)")
 if "demo_mode" not in st.session_state:
