@@ -3,6 +3,7 @@ import math
 from pathlib import Path
 
 import duckdb
+from oregon_health.storage import snapshot
 from oregon_health.regions import OREGON, get_region, health_path, check_identity
 
 MEASURES = {
@@ -52,11 +53,10 @@ def store(rows, source, path=None, *, region=OREGON):
     records = normalize(rows,region=region)
     path=path if path is not None else (DB_PATH if region==OREGON else health_path(region))
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    existed=path.exists()
-    with duckdb.connect(str(path)) as db:
-        if existed:
-            check_identity(db,region)
+    def validate(previous):
+        with duckdb.connect(str(previous), read_only=True) as db:
+            check_identity(db, region)
+    with snapshot(path, validate) as temp, duckdb.connect(str(temp)) as db:
         db.execute("BEGIN")
         db.execute("CREATE OR REPLACE TABLE estimates (fips VARCHAR, county VARCHAR, measure VARCHAR, year INTEGER, prevalence DOUBLE, low DOUBLE, high DOUBLE, PRIMARY KEY (fips, measure, year))")
         db.executemany("INSERT INTO estimates VALUES (?, ?, ?, ?, ?, ?, ?)", records)

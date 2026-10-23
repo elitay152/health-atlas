@@ -84,14 +84,10 @@ def test_cache_identity_and_legacy_oregon_migration(tmp_path,monkeypatch):
 
 def test_region_query_filters_without_network(monkeypatch):
     calls=[]
-    class Response:
-        def __init__(self,payload):self.payload=payload
-        def raise_for_status(self):pass
-        def json(self):return self.payload
     def get(url,**kwargs):
         calls.append(kwargs)
-        return Response({'name':'PLACES County Synthetic Release'} if '/api/views/' in url else health_rows(WA))
-    monkeypatch.setattr(import_data.requests,'get',get)
+        return {'name':'PLACES County Synthetic Release'} if '/api/views/' in url else health_rows(WA)
+    monkeypatch.setattr(import_data,'get_json',get)
     rows,_=import_data.fetch('abcd-1234',region=WA)
     assert len(rows)==351 and "stateabbr = 'WA'" in calls[-1]['params']['$where']
     calls=[]

@@ -16,6 +16,7 @@ import time
 import duckdb
 import requests
 
+from oregon_health.network import reserve_request
 from oregon_health.api_cache import _reserve_refresh
 from oregon_health.data import DB_PATH as COUNTY_PATH, MEASURES
 from oregon_health.profile import county_names
@@ -44,6 +45,7 @@ COLUMNS = ['tract_fips', 'county_fips', 'county', 'tract', 'measure', 'year',
 
 def _download(url, params=None):
     """Fixed official endpoints, bounded decompressed bytes, no redirects."""
+    reserve_request(url)
     with requests.get(url, params=params, timeout=(5, 30), stream=True,
                       allow_redirects=False) as response:
         response.raise_for_status()

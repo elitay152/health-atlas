@@ -7,6 +7,7 @@ import time
 
 import duckdb
 
+from oregon_health.network import writable_refreshes
 from oregon_health.data import CATALOG, DB_PATH, store
 from oregon_health.import_data import fetch
 from oregon_health.status import record_refresh
@@ -42,6 +43,7 @@ def needs_refresh(dataset, path=None, now=None, *, region=OREGON):
 
 def _reserve_refresh(path):
     """Reserve before network I/O, including failures; share state across processes."""
+    writable_refreshes()
     path = Path(path).resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -58,7 +60,7 @@ def _reserve_refresh(path):
 
 
 def refresh(dataset, path=None, *, region=OREGON):
-    """Limit all sources together; a failed download leaves the cache untouched."""
+    """Limit this cache; a failed download leaves the snapshot untouched."""
     region=get_region(region)
     region.require("county_health")
     path=path if path is not None else (DB_PATH if region==OREGON else health_path(region))
