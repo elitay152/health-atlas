@@ -1,6 +1,6 @@
 # Health Atlas
 
-A shared Python and SQL project exploring county health in Oregon. It compares nine adult health conditions using CDC PLACES county estimates.
+A shared Python and SQL project exploring county health in Oregon and Washington. It compares nine adult health conditions using CDC PLACES county estimates.
 
 ## Run locally
 
@@ -11,7 +11,7 @@ uv sync --frozen
 uv run streamlit run app.py --server.address 0.0.0.0
 ```
 
-Run commands from the repository root. If your home directory is read-only, set `UV_CACHE_DIR=/workspace/.cache/uv` before using uv. The app requests Oregon estimates from the public CDC Socrata API on first use, stores them in DuckDB, and refreshes a cache older than 24 hours on the next app interaction. **Refresh data** requests a download, subject to a shared five-minute cooldown. No API key is needed. Failed requests retain previously downloaded data; an empty cache shows an error and a retry button. Synthetic data is available only through the explicit **Use synthetic demo data** toggle. No real CDC data ships in this repository.
+Run commands from the repository root. If your home directory is read-only, set `UV_CACHE_DIR=/workspace/.cache/uv` before using uv. The app starts in Oregon; choose Oregon or Washington in the sidebar. It requests estimates for the selected state from the public CDC Socrata API on first use, stores them in DuckDB, and refreshes a cache older than 24 hours on the next app interaction. **Refresh data** requests a download, subject to a shared five-minute cooldown. No API key is needed. Failed requests retain previously downloaded data; an empty cache shows an error and a retry button. Synthetic data is available for Oregon only, through the explicit **Use synthetic demo data** toggle. No real CDC data ships in this repository.
 
 ## CDC API source
 
@@ -348,9 +348,9 @@ Example with overlapping Lane/Multnomah and Clackamas/Multnomah definitions:
 
 ![Service-area comparison](docs/images/service-area-comparison.png)
 
-## Region configuration (Oregon deployment, Washington development target)
+## Region configuration (Oregon and Washington county explorer)
 
-`oregon_health.regions` defines explicit state abbreviations/FIPS, expected county catalogs, map centers/bounds, source coverage and deployment status. Oregon remains the deployed explorer. Washington is prepared for **county CDC health and ACS context** only; tract, hospital/geocoder, HRSA and service-area paths remain Oregon-specific. A `state=WA` link shows a development notice before any Oregon source/cache is requested. Unsupported state codes are rejected; there is no global environment switch that silently repoints existing views.
+`oregon_health.regions` defines explicit state abbreviations/FIPS, expected county catalogs, map centers/bounds, source coverage and deployment status. Oregon and Washington are available through the sidebar state selector. Washington supports **county CDC health and ACS context** only; tract, hospital/geocoder, HRSA and service-area paths remain Oregon-specific. A `state=WA` link loads the isolated Washington explorer. Unsupported state codes are rejected; switching states clears view selections to prevent cross-state reuse.
 
 Inspect a region without network requests:
 
@@ -368,9 +368,9 @@ Python county and ACS functions accept a keyword `region` from `get_region("WA")
 
 Oregon keeps its existing `data/oregon.duckdb`, `data/census_<year>.duckdb`, refresh/status files, layer IDs and links without a state parameter. Washington defaults to **`data/regions/wa/counties.duckdb`** and **`data/regions/wa/census_<year>.duckdb`**, with separate refresh reservations/status files. Explicit custom paths remain supported, but a snapshot belonging to another state is rejected before refresh/read or replacement. New county/ACS provenance records state FIPS. Legacy provenance without a state marker is treated as Oregon only; it remains readable and receives the explicit marker on a successful refresh, with no bulk rename or destructive migration.
 
-Generic county links can include `state=WA`; their county IDs are validated with the corresponding catalog when parsed. Oregon links retain their prior format. The live app deliberately gates undeployed regions rather than falling back to Oregon. Washington demo/tract links are not generated. Source coverage flags describe prepared capabilities, not nationwide availability. Advancing production coverage requires the scaling/budget work in #32 and rollout verification in #33, including adapting the Oregon-specific source views where needed.
+Generic county links can include `state=WA`; their county IDs are validated with the corresponding catalog when parsed. Oregon links retain their prior format. The live app rejects unsupported regions rather than falling back to Oregon. Washington demo/tract/area settings are warned about and omitted, and Oregon-only source controls/audits are not rendered. State-aware maps, county profiles, comparisons, CSV exports and data-status reports use the active catalog. Source coverage flags describe available capabilities, not nationwide completeness. See the [release verification and contributor checklist](docs/region-release-check.md) for source periods, joins, missingness, browser checks and remaining limitations.
 
-Verified 2026-10-23: Washington CDC 2025 county release returned **351 estimates / 39 counties** for the nine curated conditions, and ACS 2023 returned all **39 counties** with estimate/MOE fields. Live checks used separate ignored Washington caches. The Washington county asset comes from the same pinned MIT-licensed Plotly source; see [boundary provenance](assets/README.md#washington-county-boundaries-development-target). Synthetic two-region fixtures and Oregon regressions cover cache identities, legacy migration, source filters, geography counts, maps, links and the production gate.
+Verified 2026-10-23: Washington CDC 2025 county release returned **351 estimates / 39 counties** for the nine curated conditions, and ACS 2023 returned all **39 counties** with estimate/MOE fields. Live checks used separate ignored Washington caches. The Washington county asset comes from the same pinned MIT-licensed Plotly source; see [boundary provenance](assets/README.md#washington-county-boundaries-development-target). Synthetic two-region fixtures and Oregon regressions cover cache identities, legacy migration, source filters, geography counts, maps, links and unsupported-source guards.
 
 ## State refresh budgets and deployment model
 
@@ -401,4 +401,4 @@ Measured on the Linux cloud workspace, 2026-10-23 (CDC 2025 county release, esti
 | Oregon | 36 / 324 | 3.943 s | 0.088 s | 4 / 0 | 115.7 MiB | 2,121,728 bytes | Yes |
 | Washington | 39 / 351 | 3.188 s | 0.097 s | 4 / 0 | 115.8 MiB | 2,121,728 bytes | Yes |
 
-Development budgets per state: **cold <120 seconds, warm <2 seconds with zero requests, peak RSS <512 MiB, combined county+ACS files <10 MB**, with failure retention required. These are regression gates for the representative importer/query workload, not Streamlit browser rendering, full-app RSS, other source refreshes or concurrent-user benchmarks. Network timing varies; RSS is the subprocess lifetime high-water mark including imports. A replacement temporarily needs room for both old and new files, and long-lived readers can retain an old file's disk allocation. Washington's public UI remains gated pending the separate rollout verification in #33.
+Development budgets per state: **cold <120 seconds, warm <2 seconds with zero requests, peak RSS <512 MiB, combined county+ACS files <10 MB**, with failure retention required. These are regression gates for the representative importer/query workload, not Streamlit browser rendering, full-app RSS, other source refreshes or concurrent-user benchmarks. Network timing varies; RSS is the subprocess lifetime high-water mark including imports. A replacement temporarily needs room for both old and new files, and long-lived readers can retain an old file's disk allocation. Washington's county UI is enabled after the [two-state release verification](docs/region-release-check.md); extended source workflows remain Oregon-only.

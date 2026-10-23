@@ -88,7 +88,7 @@ def test_app_empty_cache_failure_does_not_silently_show_demo(tmp_path, monkeypat
     assert not app.exception
     assert app.error
     # Local quality tables remain available; no synthetic health view appears.
-    assert not app.selectbox
+    assert [item.key for item in app.selectbox] == ["region_selector"]
     assert not any("Estimate (%)" in d.value.columns for d in app.dataframe)
     app.run()
     assert len(calls) == 1

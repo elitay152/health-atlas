@@ -37,7 +37,7 @@ class Region:
 OREGON=Region('OR','Oregon','41',36,'oregon-counties.geojson',(-120.55,44.15),(-125,41,-116,47),4.8,
               ('county_health','census','tract_health','tract_boundaries','hospitals','hospital_locations','hrsa','service_areas'),True)
 WASHINGTON=Region('WA','Washington','53',39,'washington-counties.geojson',(-120.8,47.4),(-125,45,-116,50),5.2,
-                  ('county_health','census'))
+                  ('county_health','census'), True)
 REGIONS={'OR':OREGON,'WA':WASHINGTON}
 
 

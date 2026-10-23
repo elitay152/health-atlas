@@ -5,6 +5,7 @@ from pathlib import Path
 import duckdb
 import streamlit as st
 
+from oregon_health.regions import OREGON, get_region
 from oregon_health.status import health_report, census_report
 from oregon_health.access_quality_ui import render_access_quality
 
@@ -33,13 +34,14 @@ def _snapshot(report, filename):
             st.download_button("Download missing-estimate report", report["missing"].to_csv(index=False), filename, "text/csv", key=f"missing-{filename}")
 
 
-def render_data_status(path, year, dataset, demo=False):
+def render_data_status(path, year, dataset, demo=False, *, region=OREGON):
+    region = get_region(region)
     st.subheader("Data status & coverage", anchor="data-status")
     with st.expander("Sources, freshness & missing estimates"):
         st.caption("Snapshot status, not a live service monitor. Opening this panel makes no network requests. Refresh windows describe fetch age, not whether the selected release is the newest official release.")
         st.markdown("#### Health estimates")
         try:
-            report = health_report(path, year, dataset, demo)
+            report = health_report(path, year, dataset, demo, region=region)
             if report["loaded"]:
                 st.caption(f"Source: {report['source']} · Available estimate years: {', '.join(map(str, report['years']))}")
                 if demo:
@@ -61,7 +63,7 @@ def render_data_status(path, year, dataset, demo=False):
             st.caption("Select an estimate year after health data loads to inspect Census coverage.")
         else:
             try:
-                report = census_report(Path(path).parent, year)
+                report = census_report(Path(path).parent, year, region=region)
                 if report["loaded"]:
                     st.caption(f"Source: [ACS {year-4}–{year} five-year estimates]({report['source']}) · 90% margins of error")
                     _snapshot(report, "census-missing-estimates.csv")
@@ -71,4 +73,7 @@ def render_data_status(path, year, dataset, demo=False):
             except (duckdb.Error, ValueError, OSError):
                 st.info("Census snapshot status could not be read. Health data remains independent.")
 
-        render_access_quality(Path(path).parent, demo)
+        if region == OREGON:
+            render_access_quality(Path(path).parent, demo)
+        else:
+            st.caption("Facility, geocoder and shortage-designation coverage is not available for Washington. It has not been evaluated as zero.")
