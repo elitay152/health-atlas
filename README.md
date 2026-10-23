@@ -301,7 +301,7 @@ Tract details distinguish three cases: no saved source row (reason unverified), 
 
 ## Define a service area
 
-Use **Define a service area → Counties in the service area** to select whole Oregon counties by their stable five-digit IDs. This selection is separate from comparison counties and County spotlight, includes counties even when health estimates are missing, and permits disconnected sets. Each county is included once; duplicate IDs are removed. The preview shows membership only, with teal fill/copper outlines for included counties and gray for excluded counties. This step defines geography; summaries are planned in [#29](https://github.com/elitay152/health-atlas/issues/29).
+Use **Define a service area → Counties in the service area** to select whole Oregon counties by their stable five-digit IDs. This selection is separate from comparison counties and County spotlight, includes counties even when health estimates are missing, and permits disconnected sets. Each county is included once; duplicate IDs are removed. The preview shows membership only, with teal fill/copper outlines for included counties and gray for excluded counties. Enable **Show service-area summary** below the definition to review saved health, demographic and access context.
 
 Copy the browser address to share a definition. `area` stores a canonical county-ID list and `area_rev` pins the bundled boundary SHA-256. **Download area definition (GeoJSON)** also saves the selected display polygons, schema version, whole-county inclusion rule and boundary source/license/revision. **Load a saved area** reloads a compatible file. Empty definitions round-trip too; **Clear service area** retains an explicit empty selection. No account, database write or external request is needed for area definitions, and the selector remains usable when county CDC data is unavailable. Definitions are disabled in synthetic demo mode.
 
@@ -312,3 +312,22 @@ Two definitions can contain the same county. That overlap is membership in both 
 Example definition with Lane and Multnomah counties:
 
 ![Whole-county service area](docs/images/service-area.png)
+
+## Service-area summary
+
+After selecting counties, enable **Show service-area summary**. It reads saved county CDC, ACS, CMS, Census address-match and HRSA snapshots independently, with no source requests or snapshot writes. **Update summary from saved data** reruns the view after sources have been loaded/refreshed in County spotlight or the hospital/HRSA panels. The page's **Estimate year** selects the CDC year and matching ACS five-year release; another ACS release is never silently substituted. Demo mode disables the area feature.
+
+The summary provides:
+
+- **Population:** a sum of compatible ACS population counts only when every distinct selected county is covered. Missing, negative, duplicated or wrong-period data withholds the entire total rather than presenting a partial area as complete. A single county can retain its source 90% MOE. For multiple counties, no combined MOE is invented because covariance is not supplied. Age-65 and poverty percentages/MOEs remain per county; compatible aggregation counts/denominators are not cached.
+- **Health:** condition-specific county charts and a table retaining all nine conditions, 95% intervals and missing states. No prevalence sum, simple/weighted rate average, combined interval or risk/demand score is calculated. Counties with missing estimates stay in the table and are omitted from the chart.
+- **Hospitals:** distinct CMS-listed IDs assigned to selected counties, separately from accepted approximate Census address points. Points require a current CMS address fingerprint, Exact response, finite Oregon coordinates, matched address and passing source-county check. Changed/unmatched/invalid points are withheld. No missing source is treated as a count of zero. These counts do not establish current operation, verified buildings, capacity or demand.
+- **HRSA:** distinct designation IDs within discipline/category/status across selected counties, alongside component/point rows and missing geometry. A multi-county designation is deduplicated within its group. Facility designations are not CMS hospitals; no cross-source matching or combined facility count is invented. Source county membership does not imply whole-county designation. Proposed withdrawal remains separate, and the public GIS view is not a complete withdrawn-history source.
+
+**Sources, dates & coverage** distinguishes loaded, not-loaded and unreadable/incompatible caches, fetch freshness and retained-after-failure states. Provenance retains CMS release/modified dates, HRSA warehouse dates, the Census address benchmark, CDC estimate year and ACS period. Unresolved counties are reported statewide and cannot be assigned to a selected area. Independently saved snapshots can have different fetch/source dates; a recent fetch is not proof of a recent release. Exact duplicate access records are deduplicated; conflicting identities invalidate the affected source. Other sources remain usable.
+
+**Download service-area summary (JSON)** retains the revision-pinned area definition, county values/intervals, total-population coverage and uncertainty limits, facility IDs/accepted-point IDs, grouped HRSA counts, source states/provenance and an explicit list of unsupported aggregations. It does not contain patient/client addresses. The same county can occur in multiple service areas; overlapping area totals must not be added as if disjoint. Membership uses county IDs, without geometric clipping or precise eligibility analysis.
+
+Example using saved public sources for Lane and Multnomah counties; source dates and coverage must be checked in the running app:
+
+![Service-area summary](docs/images/service-area-summary.png)
