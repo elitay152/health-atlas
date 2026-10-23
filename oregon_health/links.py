@@ -9,7 +9,7 @@ def parse_counties(value, *, region=OREGON):
     """An absent list uses app defaults; an empty list preserves no selection."""
     if value is None:
         return None, False
-    if not isinstance(value, str) or len(value) > 215:
+    if not isinstance(value, str) or len(value) > 6 * get_region(region).county_count - 1:
         return [], True
     if value == "":
         return [], False

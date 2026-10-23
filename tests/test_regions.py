@@ -109,11 +109,11 @@ def test_links_coverage_flags_and_live_guard(monkeypatch):
     with pytest.raises(ValueError):WA.require('hrsa')
     with pytest.raises(ValueError):link_params([],2023,'DIABETES',False,False,local=True,region=WA)
     with pytest.raises(ValueError):regions.get_region('OR\' OR TRUE')
-    def forbidden(*a,**kw):pytest.fail('unreleased region must not request Oregon data')
+    def forbidden(*a,**kw):pytest.fail('unsupported region must not request Oregon data')
     monkeypatch.setattr(api_cache,'refresh',forbidden)
-    for code in ['WA','invalid']:
+    for code in ['invalid']:
         view=AppTest.from_file(Path(__file__).resolve().parents[1]/'app.py',default_timeout=15)
         view.query_params.update(state=code)
         view.run()
         assert not view.exception and not view.selectbox
-        assert any('currently serves Oregon' in i.value for i in view.info)
+        assert any('Choose Oregon or Washington' in i.value for i in view.info)

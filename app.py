@@ -21,10 +21,10 @@ from oregon_health.hrsa_ui import render_hrsa
 from oregon_health.tract_ui import render_tracts
 from oregon_health.interpretation import render_interpretation
 from oregon_health.service_area_ui import render_service_area
-from oregon_health.regions import OREGON, get_region
+from oregon_health.regions import OREGON, REGIONS, get_region, health_path
 
 def open_map_profile():
-    fips = selected_county(st.session_state.get("county_map", {}))
+    fips = selected_county(st.session_state.get("county_map", {}), requested_region)
     if fips:
         st.session_state["profile_county"] = fips
 
@@ -46,25 +46,48 @@ def census_api_key():
 
 
 st.set_page_config(page_title="Health Atlas", page_icon="🌲", layout="wide")
-st.caption("OREGON / COMMUNITY HEALTH")
-st.title("Health Atlas")
-st.write("Explore a county. Build a comparison. Share what you find.")
-st.markdown("[Map](#county-map) · [County profile](#county-profile) · [Tracts](#tract-explorer) · [Comparison](#county-comparison) · [Service area](#service-area) · [Hospitals](#hospital-directory) · [Shortage designations](#shortage-designations) · [Data status](#data-status)")
 try:
-    requested_region=get_region(st.query_params.get("state","OR"))
+    requested_region = get_region(st.query_params.get("state", "OR"))
 except ValueError:
-    st.info("That region is not supported. This deployment currently serves Oregon.")
+    st.info("That region is not supported. Choose Oregon or Washington.")
     st.link_button("Open Oregon explorer", "?")
     st.stop()
 if not requested_region.deployed:
-    st.info(f"{requested_region.name} is prepared for development, but this deployment currently serves Oregon.")
-    st.link_button("Open Oregon explorer", "?")
+    st.info(f"{requested_region.name} is not available in this deployment.")
     st.stop()
+# URL navigation and the selector both reset widget/source state across regions.
+if st.session_state.get("_active_region") != requested_region.abbr:
+    st.session_state.clear()
+    st.session_state["_active_region"] = requested_region.abbr
+st.caption(f"{requested_region.name.upper()} / COMMUNITY HEALTH")
+st.title("Health Atlas")
+st.write("Explore a county. Build a comparison. Share what you find.")
+nav = "[Map](#county-map) · [County profile](#county-profile) · [Comparison](#county-comparison) · [Data status](#data-status)"
+if requested_region == OREGON:
+    nav = "[Map](#county-map) · [County profile](#county-profile) · [Tracts](#tract-explorer) · [Comparison](#county-comparison) · [Service area](#service-area) · [Hospitals](#hospital-directory) · [Shortage designations](#shortage-designations) · [Data status](#data-status)"
+st.markdown(nav)
+def switch_region():
+    code = st.session_state["region_selector"]
+    st.query_params.from_dict({"state": code} if code != "OR" else {})
+    st.session_state.clear()
+st.sidebar.selectbox("State", [r.abbr for r in REGIONS.values() if r.deployed],
+                     index=[r.abbr for r in REGIONS.values() if r.deployed].index(requested_region.abbr),
+                     format_func=lambda code: get_region(code).name, key="region_selector", on_change=switch_region)
+region_options = {} if requested_region == OREGON else {"region": requested_region}
+if requested_region != OREGON:
+    DB_PATH = health_path(requested_region, DB_PATH.parent)
+    st.info("Washington coverage: county health estimates and Census demographics. Tracts, hospitals, address matches, shortage designations and service areas are currently available for Oregon only.")
+    if any(key in st.query_params for key in ("local", "tract", "tract_year", "area", "area_compare", "area_b")):
+        st.warning("Oregon-only tract and service-area settings were omitted from this Washington view.")
+health_options = {} if requested_region == OREGON else {"path": DB_PATH, **region_options}
+census_options = {} if requested_region == OREGON else {"cache_dir": DB_PATH.parent, **region_options}
 st.sidebar.header("Data settings")
 st.sidebar.markdown("[Data status & coverage](#data-status)")
 if "demo_mode" not in st.session_state:
-    st.session_state["demo_mode"] = st.query_params.get("demo") == "1"
-use_demo = st.sidebar.toggle("Use synthetic demo data", key="demo_mode")
+    st.session_state["demo_mode"] = st.query_params.get("demo") == "1" and requested_region == OREGON
+    if st.query_params.get("demo") == "1" and requested_region != OREGON:
+        st.warning("The synthetic demo is available for Oregon only. This Washington view uses real data.")
+use_demo = st.sidebar.toggle("Use synthetic demo data", key="demo_mode", disabled=requested_region != OREGON)
 with st.sidebar.expander("Source & refresh"):
     dataset = os.environ.get("CDC_PLACES_DATASET", DEFAULT_DATASET)
     st.text(f"Dataset: {dataset}")
@@ -74,14 +97,14 @@ with st.sidebar.expander("Source & refresh"):
 if not use_demo:
     # One automatic attempt per source per session prevents retrying on every
     # widget interaction if CDC is unavailable. The button always retries.
-    attempt_key = f"cdc_attempt:{dataset}"
-    if refresh_clicked or (not st.session_state.get(attempt_key) and needs_refresh(dataset)):
+    attempt_key = f"cdc_attempt:{requested_region.abbr}:{dataset}"
+    if refresh_clicked or (not st.session_state.get(attempt_key) and needs_refresh(dataset, **health_options)):
         st.session_state[attempt_key] = True
         try:
-            with st.spinner("Fetching Oregon estimates from CDC…"):
-                count = refresh(dataset)
+            with st.spinner(f"Fetching {requested_region.name} estimates from CDC…"):
+                count = refresh(dataset, **health_options)
             st.session_state.pop(attempt_key, None)
-            st.success(f"Downloaded {count} Oregon estimates from CDC.")
+            st.success(f"Downloaded {count} {requested_region.name} estimates from CDC.")
         except RefreshLimited as exc:
             st.info(str(exc))
         except (requests.RequestException, ValueError, KeyError, TypeError, OSError, duckdb.Error):
@@ -99,13 +122,14 @@ if use_demo:
 else:
     path = DB_PATH
     if not path.exists():
-        area_view = render_service_area(health_path=DB_PATH)
-        if dict(st.query_params) != area_view:
-            st.query_params.from_dict(area_view)
-        render_hospitals(context_available=False)
-        render_hrsa()
-        render_data_status(DB_PATH, None, dataset)
-        st.info("No CDC data has been downloaded yet. Try Refresh data after five minutes, or ask the maintainer to check the data source. You can also enable the clearly labeled synthetic demo.")
+        if requested_region == OREGON:
+            area_view = render_service_area(health_path=DB_PATH)
+            if dict(st.query_params) != area_view:
+                st.query_params.from_dict(area_view)
+            render_hospitals(context_available=False)
+            render_hrsa()
+        render_data_status(DB_PATH, None, dataset, **region_options)
+        st.info("No CDC data has been downloaded yet. Try Refresh data after five minutes, or ask the maintainer to check the data source." + (" You can also enable the clearly labeled synthetic demo." if requested_region == OREGON else ""))
         st.stop()
 
 with duckdb.connect(str(path), read_only=True) as db:
@@ -138,16 +162,16 @@ with duckdb.connect(str(path), read_only=True) as db:
         st.session_state["estimate_year"] = years[0]
         st.warning("The previous year is unavailable for this measure. Showing the latest available year.")
     year = year_column.selectbox("Estimate year", years, key="estimate_year")
-    frame = comparison(db, measure, year)
+    frame = comparison(db, measure, year, **region_options)
     st.subheader(f"{MEASURES[measure]} · {year}")
     st.caption("Modeled estimates for adults · Choose a measure and year, then a county.")
     st.caption("Crude rates reflect age composition. Read 95% intervals alongside the estimates; a higher rate alone does not establish greater healthcare demand.")
     if not frame.empty:
-        st.caption(f"{len(frame)} Oregon counties · County estimates range from {frame.prevalence.min():.1f}% to {frame.prevalence.max():.1f}%.")
+        st.caption(f"{len(frame)} {requested_region.name} counties · County estimates range from {frame.prevalence.min():.1f}% to {frame.prevalence.max():.1f}%.")
     options = sorted(frame.county)
-    comparison_source = (use_demo, dataset)
+    comparison_source = (requested_region.abbr, use_demo, dataset)
     if "compare_counties" not in st.session_state:
-        requested_codes, invalid = parse_counties(st.query_params.get("compare"))
+        requested_codes, invalid = parse_counties(st.query_params.get("compare"), **region_options)
         available_names = dict(zip(frame.fips, frame.county))
         st.session_state["compare_counties"] = options[:3] if requested_codes is None else [available_names[code] for code in requested_codes if code in available_names]
         if invalid or (requested_codes is not None and any(code not in available_names for code in requested_codes)):
@@ -162,16 +186,16 @@ with duckdb.connect(str(path), read_only=True) as db:
     map_column, chart_column = st.columns([1.6, 1], gap="large")
     with map_column:
         st.subheader("The county landscape", anchor="county-map")
-        st.pydeck_chart(county_deck(frame, selected), height=480, key="county_map", on_select=open_map_profile, selection_mode="single-object", alt="Oregon counties colored by estimated prevalence. Use the county profile selector below as a keyboard-accessible alternative.")
+        st.pydeck_chart(county_deck(frame, selected, **region_options), height=480, key="county_map", on_select=open_map_profile, selection_mode="single-object", alt=f"{requested_region.name} counties colored by estimated prevalence. Use the county profile selector below as a keyboard-accessible alternative.")
         st.caption("Light → dark teal: lower → higher estimates · Gray: no estimate · Copper outline: in your comparison.")
         current_profile = st.session_state.get("profile_county")
-        if current_profile in county_names():
-            st.markdown(f"**{county_names()[current_profile]} County selected.** [View county profile ↓](#county-profile)")
+        if current_profile in county_names(requested_region):
+            st.markdown(f"**{county_names(requested_region)[current_profile]} County selected.** [View county profile ↓](#county-profile)")
         else:
             st.caption("Hover for details. Click a county, then open its profile below.")
         with st.expander("Map legend & source"):
             st.caption("Colors adjust to each measure and year. Crude prevalence reflects county age differences; colors are not directly comparable between measures. Pan or zoom to explore; hover for 95% confidence intervals.")
-            st.caption("Boundaries: [Plotly county GeoJSON](https://github.com/plotly/datasets/blob/0c447c47b757ad74edecab31f0d72f849d2e67c2/geojson-counties-fips.json), MIT license. Generalized boundaries for visualization.")
+            st.caption("Boundaries: [Plotly county GeoJSON](https://github.com/plotly/datasets/blob/0c447c47b757ad74edecab31f0d72f849d2e67c2/geojson-counties-fips.json), MIT license. Generalized boundaries for visualization; boundary vintage is unverified, so they are not evidence of precise geography or historical boundary alignment.")
     with chart_column:
         st.markdown("### Side by side")
         if visible.empty:
@@ -179,28 +203,32 @@ with duckdb.connect(str(path), read_only=True) as db:
         else:
             st.altair_chart(intervals(visible), width="stretch")
             st.caption("Dots are estimates; lines are 95% confidence intervals. Overlap is not a significance test.")
-        st.markdown("#### Across Oregon")
+        st.markdown(f"#### Across {requested_region.name}")
         st.altair_chart(distribution(frame), width="stretch")
         st.caption("One observation per county. Dashed line: county median, not population-weighted statewide prevalence.")
     if not visible.empty:
         with st.expander("Compare estimates & download", expanded=False):
             st.dataframe(visible.drop(columns="fips").rename(columns={"county": "County", "prevalence": "Estimate (%)", "low": "95% CI lower (%)", "high": "95% CI upper (%)"}), hide_index=True)
-            st.download_button("Download comparison CSV", visible.to_csv(index=False), "health-atlas-oregon.csv", "text/csv")
+            export_source, export_imported = db.execute("SELECT source, imported_at FROM provenance").fetchone()
+            county_export = visible.assign(state=requested_region.abbr, state_fips=requested_region.state_fips,
+                                          measure=measure, estimate_year=year, confidence=95, unit="percent",
+                                          source=export_source, imported_at=str(export_imported))
+            st.download_button("Download comparison CSV", county_export.to_csv(index=False), f"health-atlas-{requested_region.name.lower()}.csv", "text/csv")
     st.divider()
     st.subheader("County spotlight", anchor="county-profile")
     st.caption("Choose a county to see its health measures, then add it to your comparison.")
-    names = county_names()
+    names = county_names(requested_region)
     requested_county = st.query_params.get("county")
     if "profile_county" not in st.session_state:
         st.session_state["profile_county"] = requested_county if requested_county in names else None
         if requested_county and requested_county not in names:
-            st.warning("That county link is not a recognized Oregon county. Choose a county below.")
-    fips = st.selectbox("County profile", list(names), format_func=lambda value: f"{names[value]} County", index=None, placeholder="Choose an Oregon county", key="profile_county")
+            st.warning(f"That county link is not a recognized {requested_region.name} county. Choose a county below.")
+    fips = st.selectbox("County profile", list(names), format_func=lambda value: f"{names[value]} County", index=None, placeholder=f"Choose a {requested_region.name} county", key="profile_county")
     if fips:
         st.subheader(f"{names[fips]} County")
         st.caption(f"{year} estimates · Modeled adult crude prevalence")
         st.caption("Three familiar measures at a glance; the chart below includes every available condition.")
-        profile = county_profile(db, fips, year)
+        profile = county_profile(db, fips, year, **region_options)
         records = {row.measure: row for row in profile.itertuples()}
         cards = st.columns(3)
         for card, (code, label) in zip(cards, list(MEASURES.items())[:3]):
@@ -220,7 +248,7 @@ with duckdb.connect(str(path), read_only=True) as db:
         else:
             try:
                 with st.spinner("Loading Census context…"):
-                    context = census_context(fips, year, api_key=census_api_key())
+                    context = census_context(fips, year, api_key=census_api_key(), **census_options)
                 if context["warning"]:
                     st.warning(context["warning"])
                 context_cards = st.columns(3)
@@ -250,7 +278,7 @@ with duckdb.connect(str(path), read_only=True) as db:
         if names[fips] in selected:
             st.caption("Already in your comparison.")
         st.markdown("[View comparison ↓](#county-comparison) · [Back to map ↑](#county-map)")
-    local_view = render_tracts(fips, measure, year, use_demo)
+    local_view = render_tracts(fips, measure, year, use_demo) if requested_region == OREGON else {}
     st.divider()
     st.subheader("Compare the whole picture", anchor="county-comparison")
     st.caption("The counties selected above, across nine health conditions and community demographics.")
@@ -270,7 +298,7 @@ with duckdb.connect(str(path), read_only=True) as db:
             try:
                 with st.spinner("Loading comparison demographics…"):
                     for code in codes:
-                        result = census_context(code, year, api_key=census_api_key())
+                        result = census_context(code, year, api_key=census_api_key(), **census_options)
                         if result["year"] != year:
                             raise ValueError("Census release year differs from the comparison year")
                         contexts[code] = result
@@ -282,7 +310,7 @@ with duckdb.connect(str(path), read_only=True) as db:
                 logging.getLogger(__name__).exception("Comparison demographics unavailable")
                 st.info("Some Census demographics are unavailable. Health comparisons remain available.")
         comparison_source, comparison_imported = db.execute("SELECT source, imported_at FROM provenance").fetchone()
-        rows = comparison_rows(db, codes, year, comparison_source, comparison_imported, contexts, demo=use_demo)
+        rows = comparison_rows(db, codes, year, comparison_source, comparison_imported, contexts, demo=use_demo, **region_options)
         st.markdown("#### Condition patterns")
         st.altair_chart(heatmap(rows), width="stretch")
         st.caption("Absolute prevalence, not a health grade or combined risk score. Conditions can overlap. Gray/— means no estimate. Hover for 95% intervals. The heatmap shows the first three selected counties; the table and CSV include all selected counties.")
@@ -299,14 +327,15 @@ with duckdb.connect(str(path), read_only=True) as db:
         st.download_button("Download full comparison CSV", rows.to_csv(index=False), "health-atlas-county-comparison.csv", "text/csv")
     st.caption("Copy your browser’s address to share these counties and view settings. Links use the site’s current data release.")
     selected_fips = dict(zip(frame.county, frame.fips))
-    shared_view = link_params([selected_fips[name] for name in selected], year, measure, use_demo, include_census, fips, **local_view)
+    shared_view = link_params([selected_fips[name] for name in selected], year, measure, use_demo, include_census, fips, **local_view, **region_options)
     st.markdown("[Back to map ↑](#county-map) · [Data status & sources](#data-status)")
-area_view = render_service_area(use_demo, health_path=path, year=year)
+area_view = render_service_area(use_demo, health_path=path, year=year) if requested_region == OREGON else {}
 shared_view.update(area_view)
 if dict(st.query_params) != shared_view:
     st.query_params.from_dict(shared_view)
-render_hospitals(use_demo)
-render_hrsa(use_demo)
-render_data_status(path, year, dataset, use_demo)
+if requested_region == OREGON:
+    render_hospitals(use_demo)
+    render_hrsa(use_demo)
+render_data_status(path, year, dataset, use_demo, **region_options)
 st.caption("Population estimates, not individual diagnoses. County differences do not establish causes.")
 render_interpretation()

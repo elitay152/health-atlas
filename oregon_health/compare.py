@@ -4,6 +4,7 @@ import math
 import pandas as pd
 
 from oregon_health.data import MEASURES
+from oregon_health.regions import OREGON, get_region, check_identity
 from oregon_health.profile import county_names
 
 DEMOGRAPHICS = [
@@ -13,12 +14,14 @@ DEMOGRAPHICS = [
 ]
 
 
-def comparison_rows(db, fips_codes, year, source, imported_at, contexts=None, demo=False):
+def comparison_rows(db, fips_codes, year, source, imported_at, contexts=None, demo=False, *, region=OREGON):
     """Use the selected year only; missing health/Census values never become zero."""
-    names = county_names()
+    region = get_region(region)
+    check_identity(db, region)
+    names = county_names(region)
     codes = list(dict.fromkeys(fips_codes))
     if any(code not in names for code in codes):
-        raise ValueError("Unknown Oregon county in comparison")
+        raise ValueError(f"Unknown {region.name} county in comparison")
     health = db.execute("""
         SELECT fips, measure, prevalence, low, high FROM estimates
         WHERE fips IN (SELECT unnest(?::VARCHAR[])) AND year = ?
@@ -26,7 +29,7 @@ def comparison_rows(db, fips_codes, year, source, imported_at, contexts=None, de
     health = {(row[0], row[1]): row[2:] for row in health}
     rows = []
     for fips in codes:
-        common = {"fips": fips, "county": names[fips]}
+        common = {"state": region.abbr, "state_fips": region.state_fips, "fips": fips, "county": names[fips]}
         for measure, label in MEASURES.items():
             value, low, high = health.get((fips, measure), (None, None, None))
             rows.append(dict(common, metric=label, estimate=value, lower=low, upper=high, margin_of_error=None,

@@ -9,8 +9,8 @@ def county_names(region=OREGON):
 
 
 def selected_county(event, region=OREGON):
+    """Accept only a configured county FIPS from the active region layer."""
     region=get_region(region)
-    """Accept only an Oregon FIPS from an expected GeoJSON layer event."""
     if not isinstance(event, dict):
         return None
     selection = event.get("selection", {})
