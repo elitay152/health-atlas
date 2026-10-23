@@ -12,4 +12,20 @@ jobs:
           python-version: '3.12'
       - uses: astral-sh/setup-uv@v7
       - run: uv sync --frozen
-      - run: uv run pytest -q
+      - run: uv run pytest -q --junitxml=/tmp/pytest-results.xml
+      - name: Annotate failed tests
+        if: failure()
+        run: |
+          python - <<'PYTHON'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          report = Path('/tmp/pytest-results.xml')
+          if report.exists():
+              for case in ET.parse(report).iter('testcase'):
+                  for failure in [*case.findall('failure'), *case.findall('error')]:
+                      title = case.get('classname', '') + '.' + case.get('name', '')
+                      message = (failure.text or failure.get('message', 'Test failed'))[-6000:]
+                      def escape(value):
+                          return value.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                      print(f'::error title={escape(title)}::{escape(message)}')
+          PYTHON
