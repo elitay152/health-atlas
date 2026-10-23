@@ -1,8 +1,7 @@
 """Concurrency and failure tests use synthetic data and local coordination only."""
-import multiprocessing
 import subprocess
 import sys
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 import duckdb
 import pytest
@@ -10,18 +9,24 @@ import pytest
 from oregon_health import api_cache, census, data, network, storage
 
 
-def _attempt_request(limit):
-    network.HOST_BUDGETS["data.cdc.gov"] = limit
-    try:
-        network.reserve_request('https://data.cdc.gov/resource/synthetic.json')
-        return True
-    except ValueError:
-        return False
-
-
 def test_processes_share_host_budget_across_region_cache_paths(monkeypatch):
-    with ProcessPoolExecutor(4, mp_context=multiprocessing.get_context('spawn')) as workers:
-        assert sum(workers.map(_attempt_request, [3] * 12)) == 3
+    # AppTest can leave __main__ pointing at app.py. multiprocessing spawn would
+    # replay that entry point; standalone interpreters must import only the limiter.
+    script = """
+from oregon_health import network
+network.HOST_BUDGETS['data.cdc.gov'] = 3
+try:
+    network.reserve_request('https://data.cdc.gov/resource/synthetic.json')
+except ValueError:
+    raise SystemExit(2)
+"""
+    def attempt(_):
+        process = subprocess.run([sys.executable, '-c', script],
+                                 capture_output=True, text=True, timeout=20)
+        assert process.returncode in {0, 2}, process.stderr
+        return process.returncode == 0
+    with ThreadPoolExecutor(4) as workers:
+        assert sum(workers.map(attempt, range(12))) == 3
     # Another host has an independent budget; expiry permits future CDC attempts.
     network.reserve_request('https://api.census.gov/data/synthetic')
     now = network.time.time()
