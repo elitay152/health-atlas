@@ -42,6 +42,7 @@ def _read(path, kind):
             rows=_rows(db,'SELECT facility_id,address_hash,location_status,longitude,latitude,matched_address FROM locations')
             provenance=_rows(db,'SELECT benchmark,benchmark_id,fetched_at,fingerprint FROM provenance')[0]
         else:
+            hrsa.check_region(db)  # This audit/summary is Oregon-only.
             rows=[json.loads(r[0]) for r in db.execute('SELECT payload FROM features').fetchall()]
             provenance=json.loads(db.execute('SELECT payload FROM provenance').fetchone()[0])
             required={'feature_key','designation_id','discipline','category','county_fips','geometry','source_date','status'}

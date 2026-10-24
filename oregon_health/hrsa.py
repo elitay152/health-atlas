@@ -1,4 +1,4 @@
-"""Bounded Oregon HRSA HPSA imports, preserving component and designation grain.
+"""Bounded state-specific HRSA HPSA imports, preserving component and designation grain.
 
 Run: python -m oregon_health.hrsa. Source polygons are generalized by the HRSA
 query service for display; they are not eligibility or address-level determinations.
@@ -6,14 +6,14 @@ query service for display; they are not eligibility or address-level determinati
 from datetime import datetime, timedelta, timezone
 import json
 import math
-import os
 from pathlib import Path
 import re
-import tempfile
 
 import duckdb
 import requests
 
+from oregon_health.regions import OREGON, get_region, cache_dir
+from oregon_health.storage import snapshot as publish_snapshot
 from oregon_health.network import reserve_request
 from oregon_health.api_cache import _reserve_refresh
 from oregon_health.data import DB_PATH as HEALTH_PATH
@@ -98,7 +98,9 @@ def _geometry(value, kind):
     return value
 
 
-def normalize(features, discipline, layer, point):
+def normalize(features, discipline, layer, point, *, region=OREGON):
+    region = get_region(region)
+    region.require("hrsa")
     rows, seen = [], set()
     for feature in features:
         p = feature["properties"]
@@ -112,9 +114,9 @@ def normalize(features, discipline, layer, point):
             raise ValueError("HRSA discipline or status differs from the source contract")
         if p["HPSA_STATUS_DESC"] != STATUSES[p["HPSA_STATUS_CD"]]:
             raise ValueError("HRSA status description changed")
-        state = (p.get("PRIMARY_STATE_FIPS_CD") == "41" or p.get("CMN_STATE_FIPS_CD") == "41") if point else p.get("STATE_FIPS_CD") == "41"
+        state = (p.get("PRIMARY_STATE_FIPS_CD") == region.state_fips or p.get("CMN_STATE_FIPS_CD") == region.state_fips) if point else p.get("STATE_FIPS_CD") == region.state_fips
         if not state:
-            raise ValueError("HRSA returned a feature outside the Oregon query")
+            raise ValueError(f"HRSA returned a feature outside the {region.name} query")
         if point:
             if p["HPSA_TYP_CD"] in {"Hpsa Geo", "Hpsa Geo HN", "Hpsa Pop"}:
                 raise ValueError("Non-facility designation appeared in the facility point layer")
@@ -126,10 +128,13 @@ def normalize(features, discipline, layer, point):
         else:
             raise ValueError("Unexpected HRSA polygon designation type")
         county = p.get("CMN_STATE_COUNTY_FIPS_CD") if point else p.get("STATE_COUNTY_FIPS_CD")
-        row = dict(feature_key=f"{layer}:{oid}", designation_id=designation_id,
+        row = dict(state=region.abbr, state_fips=region.state_fips, feature_key=f"{layer}:{oid}", designation_id=designation_id,
                    name=p["HPSA_NM"], discipline=discipline, category=category,
+                   source_primary_state_fips=p.get("PRIMARY_STATE_FIPS_CD") if point else None,
+                   source_common_state_fips=p.get("CMN_STATE_FIPS_CD") if point else None,
+                   source_component_state_fips=None if point else p.get("STATE_FIPS_CD"),
                    designation_type=p["HPSA_TYP_DESC"], status=STATUSES[p["HPSA_STATUS_CD"]],
-                   county_fips=county if county in county_names() else None, source_county_fips=county,
+                   county_fips=county if county in county_names(region) else None, source_county_fips=county,
                    geography_id=p.get("GEO_ID"), component_type=p.get("COMP_TYP_CD"),
                    component_name=p.get("COMP_NM"), population=p.get("HPSA_POPULATION_TYP_DESC"),
                    designated=_date(p.get("HPSA_DESIGNATION_DT_TXT")),
@@ -143,7 +148,9 @@ def normalize(features, discipline, layer, point):
     return rows
 
 
-def fetch():
+def fetch(*, region=OREGON):
+    region = get_region(region)
+    region.require("hrsa")
     records, layers = [], []
     for discipline, ids in DISCIPLINES.items():
         for index, layer in enumerate(ids):
@@ -154,7 +161,7 @@ def fetch():
             if (metadata.get("name") != expected_name or not set(required).issubset(
                     {f["name"] for f in metadata.get("fields", [])})):
                 raise ValueError("HRSA layer schema differs from the expected source")
-            where = "(PRIMARY_STATE_FIPS_CD = '41' OR CMN_STATE_FIPS_CD = '41')" if point else "STATE_FIPS_CD = '41'"
+            where = f"(PRIMARY_STATE_FIPS_CD = '{region.state_fips}' OR CMN_STATE_FIPS_CD = '{region.state_fips}')" if point else f"STATE_FIPS_CD = '{region.state_fips}'"
             ids = _get(f"/{layer}/query", {"where": where, "returnIdsOnly": "true"}).get("objectIds")
             if not isinstance(ids, list) or len(ids) > MAX_FEATURES or any(type(i) is not int for i in ids) or len(set(ids)) != len(ids):
                 raise ValueError("HRSA returned an invalid or oversized feature index")
@@ -169,64 +176,102 @@ def fetch():
                         or len(batch) != len(chunk) or {f["properties"]["OBJECTID"] for f in batch} != set(chunk)):
                     raise ValueError("HRSA returned a truncated or inconsistent feature batch")
                 features.extend(batch)
-            records.extend(normalize(features, discipline, layer, point))
+            records.extend(normalize(features, discipline, layer, point, region=region))
             if len(records)>MAX_FEATURES:
-                raise ValueError("HRSA Oregon snapshot exceeds the feature limit")
+                raise ValueError(f"HRSA {region.name} snapshot exceeds the feature limit")
             layers.append(dict(layer=layer, name=expected_name, features=len(features)))
     if not records:
-        raise ValueError("HRSA returned no Oregon designations")
+        raise ValueError(f"HRSA returned no {region.name} designations")
     return records, dict(source_url=SOURCE_URL, service_url=BASE, fetched_at=datetime.now(timezone.utc).isoformat(),
-                         layers=layers, generalization_degrees=0.005)
+                         layers=layers, generalization_degrees=0.005, state=region.abbr, state_fips=region.state_fips)
 
 
-def store(records, provenance, path=DB_PATH):
+def hrsa_path(region=OREGON):
+    region = get_region(region)
+    return DB_PATH if region == OREGON else cache_dir(region, DB_PATH.parent) / 'hrsa.duckdb'
+
+
+def check_region(db, region=OREGON):
+    region = get_region(region)
+    provenance = json.loads(db.execute('SELECT payload FROM provenance').fetchone()[0])
+    if not isinstance(provenance, dict) or provenance.get('state_fips', '41') != region.state_fips:
+        raise ValueError('HRSA snapshot belongs to another region')
+    return provenance
+
+
+def store(records, provenance, path=None, *, region=OREGON):
     """Atomic, separate snapshot; one row per source feature, not per designation."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    handle, filename = tempfile.mkstemp(dir=path.parent, suffix=".duckdb")
-    os.close(handle)
-    temp = Path(filename)
-    temp.unlink()
-    try:
+    region = get_region(region)
+    region.require('hrsa')
+    if (provenance.get('state_fips', region.state_fips) != region.state_fips
+            or any(r.get('state_fips', region.state_fips) != region.state_fips
+                   or (r['county_fips'] is not None and r['county_fips'] not in region.counties()) for r in records)):
+        raise ValueError('HRSA records/provenance belong to another region')
+    provenance = dict(provenance, state=region.abbr, state_fips=region.state_fips)
+    path = Path(path if path is not None else hrsa_path(region))
+    def validate(previous):
+        with duckdb.connect(str(previous), read_only=True) as db:
+            check_region(db, region)
+    with publish_snapshot(path, validate) as temp:
         with duckdb.connect(str(temp)) as db:
             db.execute("CREATE TABLE features (feature_key VARCHAR PRIMARY KEY, designation_id VARCHAR, discipline VARCHAR, county_fips VARCHAR, payload VARCHAR)")
             db.executemany("INSERT INTO features VALUES (?, ?, ?, ?, ?)", [
                 (r["feature_key"],r["designation_id"],r["discipline"],r["county_fips"],json.dumps(r)) for r in records])
             db.execute("CREATE TABLE provenance (payload VARCHAR)")
             db.execute("INSERT INTO provenance VALUES (?)",[json.dumps(provenance)])
-        os.replace(temp,path)
-    finally:
-        temp.unlink(missing_ok=True)
 
 
-def snapshot(path=DB_PATH):
+def snapshot(path=None, *, region=OREGON):
+    region = get_region(region)
+    path = path if path is not None else hrsa_path(region)
     with duckdb.connect(str(path),read_only=True) as db:
+        provenance = check_region(db, region)
         records=[json.loads(row[0]) for row in db.execute("SELECT payload FROM features ORDER BY feature_key").fetchall()]
-        provenance=json.loads(db.execute("SELECT payload FROM provenance").fetchone()[0])
     return records,provenance
 
 
-def needs_refresh(path=DB_PATH):
+def needs_refresh(path=None, *, region=OREGON):
+    region = get_region(region)
+    path = path if path is not None else hrsa_path(region)
     if not Path(path).exists():
         return True
-    _,provenance=snapshot(path)
+    _,provenance=snapshot(path, region=region)
     return datetime.now(timezone.utc)-datetime.fromisoformat(provenance["fetched_at"])>=CACHE_TTL
 
 
-def refresh(path=DB_PATH,force=False):
-    if not force and not needs_refresh(path):
+def refresh(path=None,force=False, *, region=OREGON):
+    region = get_region(region)
+    region.require("hrsa")
+    path = path if path is not None else hrsa_path(region)
+    if Path(path).exists():
+        with duckdb.connect(str(path), read_only=True) as db:
+            check_region(db, region)
+    if not force and not needs_refresh(path, region=region):
         return
     _reserve_refresh(path)
     try:
-        store(*fetch(),path=path)
+        records, provenance = fetch() if region == OREGON else fetch(region=region)
+        store(records, provenance, path=path, region=region)
     except Exception:
         record_refresh(path,"hrsa-hpsa","failed")
         raise
     record_refresh(path,"hrsa-hpsa","success")
 
 
-if __name__ == "__main__":
-    refresh()
-    records,provenance=snapshot()
-    print(json.dumps({"features":len(records),"designations":len({(r['discipline'],r['designation_id']) for r in records}),
-                      "provenance":provenance},indent=2))
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--region', choices=['OR', 'WA'], default='OR')
+    parser.add_argument('--path', type=Path)
+    parser.add_argument('--refresh', action='store_true')
+    args = parser.parse_args()
+    try:
+        refresh(args.path, force=args.refresh, region=args.region)
+        records, provenance = snapshot(args.path, region=args.region)
+    except (requests.RequestException, ValueError, KeyError, TypeError, OSError, duckdb.Error):
+        parser.exit(1, 'HRSA refresh failed; any previous snapshot was retained. Check source access/schema or retry after the cooldown.\n')
+    print(json.dumps(dict(features=len(records), designations=len({(r['discipline'], r['designation_id']) for r in records}), provenance=provenance), indent=2))
+
+
+if __name__ == '__main__':
+    main()

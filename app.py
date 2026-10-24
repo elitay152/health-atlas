@@ -62,7 +62,7 @@ if st.session_state.get("_active_region") != requested_region.abbr:
 st.caption(f"{requested_region.name.upper()} / COMMUNITY HEALTH")
 st.title("Health Atlas")
 st.write("Explore a county. Build a comparison. Share what you find.")
-nav = "[Map](#county-map) · [County profile](#county-profile) · [Comparison](#county-comparison) · [Hospitals](#hospital-directory) · [Data status](#data-status)"
+nav = "[Map](#county-map) · [County profile](#county-profile) · [Comparison](#county-comparison) · [Hospitals](#hospital-directory) · [Shortage designations](#shortage-designations) · [Data status](#data-status)"
 if requested_region == OREGON:
     nav = "[Map](#county-map) · [County profile](#county-profile) · [Tracts](#tract-explorer) · [Comparison](#county-comparison) · [Service area](#service-area) · [Hospitals](#hospital-directory) · [Shortage designations](#shortage-designations) · [Data status](#data-status)"
 st.markdown(nav)
@@ -76,7 +76,7 @@ st.sidebar.selectbox("State", [r.abbr for r in REGIONS.values() if r.deployed],
 region_options = {} if requested_region == OREGON else {"region": requested_region}
 if requested_region != OREGON:
     DB_PATH = health_path(requested_region, DB_PATH.parent)
-    st.info("Washington coverage: county health estimates, Census demographics and CMS hospital listings. Optional approximate hospital locations are available. Tracts, shortage designations and service areas are currently available for Oregon only.")
+    st.info("Washington coverage: county health estimates, Census demographics and CMS hospital listings. Optional approximate hospital locations and HRSA shortage designations are available. Tracts and service areas are currently available for Oregon only.")
     if any(key in st.query_params for key in ("local", "tract", "tract_year", "area", "area_compare", "area_b")):
         st.warning("Oregon-only tract and service-area settings were omitted from this Washington view.")
 health_options = {} if requested_region == OREGON else {"path": DB_PATH, **region_options}
@@ -127,8 +127,7 @@ else:
             if dict(st.query_params) != area_view:
                 st.query_params.from_dict(area_view)
         render_hospitals(context_available=False, **region_options)
-        if requested_region == OREGON:
-            render_hrsa()
+        render_hrsa(**region_options)
         render_data_status(DB_PATH, None, dataset, **region_options)
         st.info("No CDC data has been downloaded yet. Try Refresh data after five minutes, or ask the maintainer to check the data source." + (" You can also enable the clearly labeled synthetic demo." if requested_region == OREGON else ""))
         st.stop()
@@ -335,8 +334,7 @@ shared_view.update(area_view)
 if dict(st.query_params) != shared_view:
     st.query_params.from_dict(shared_view)
 render_hospitals(use_demo, **region_options)
-if requested_region == OREGON:
-    render_hrsa(use_demo)
+render_hrsa(use_demo, **region_options)
 render_data_status(path, year, dataset, use_demo, **region_options)
 st.caption("Population estimates, not individual diagnoses. County differences do not establish causes.")
 render_interpretation()
