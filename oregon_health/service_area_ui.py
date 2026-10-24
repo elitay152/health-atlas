@@ -37,7 +37,8 @@ def area_deck(codes, *, region=OREGON):
         tooltip={'text':'{name} County · {fips}\n{membership}'})
 
 
-def render_service_area(demo=False, *, health_path=None, year=2023, region=OREGON):
+def render_service_area(demo=False, *, health_path=None, year=2023, region=OREGON, controls=None):
+    controls=controls if controls is not None else st.sidebar
     region = get_region(region)
     region.require("service_areas")
     st.divider()
@@ -67,12 +68,12 @@ def render_service_area(demo=False, *, health_path=None, year=2023, region=OREGO
                 st.success('Saved county selection loaded.')
             except ValueError:
                 st.warning('That file is not a compatible Health Atlas area definition. Boundary revisions, county IDs and polygons must match the current bundle. Your selection was retained.')
-    codes = st.multiselect('Counties in the service area',sorted(names,key=names.get),
+    codes = controls.multiselect('Counties in the service area',sorted(names,key=names.get),
         format_func=lambda c:f'{names[c]} County · {c}',key='area_counties',on_change=_activate)
-    st.button('Clear service area',key='area_clear',on_click=_clear,disabled=not codes)
+    controls.button('Clear service area',key='area_clear',on_click=_clear,disabled=not codes)
     st.write(f'**{len(codes)} whole counties selected**')
     if not codes:
-        st.info('The area is empty. Select counties above; empty definitions can also be saved and shared.')
+        st.info('The area is empty. Select counties in the sidebar; empty definitions can also be saved and shared.')
     st.pydeck_chart(area_deck(codes, region=region),height=380,key='service_area_map',
         alt=f'{region.name} county membership preview. Teal and copper identify included counties; use the Counties in the service area selector to change membership.')
     st.caption('Teal fill / copper outline: included whole counties · Gray: excluded. This map shows membership, not prevalence, supply or eligibility.')
@@ -87,12 +88,12 @@ def render_service_area(demo=False, *, health_path=None, year=2023, region=OREGO
         st.caption('No patient/client addresses, uploaded address lists, geocoding or drive-time service are used. This definition starts with county IDs; tract-based analytical areas require separately suitable geography.')
         st.link_button('Boundary source & MIT attribution',service_areas.SOURCE)
     if 'service_area_summary' in region.supported_sources:
-        render_summary(codes,year,health_path,region=region)
+        render_summary(codes,year,health_path,region=region,controls=controls)
     else:
         st.info(f'Service-area summaries are not available for {region.name}.')
     if 'service_area_compare' not in region.supported_sources:
-        st.info('Area comparisons are currently available for Oregon only.')
-    compared = render_comparison(codes,year,health_path) if 'service_area_compare' in region.supported_sources else {}
+        st.info(f'Area comparisons are not available for {region.name}.')
+    compared = render_comparison(codes,year,health_path,region=region,controls=controls) if 'service_area_compare' in region.supported_sources else {}
     params=service_areas.link_params(codes, region=region) if st.session_state.get('area_active') else {}
     # Include an explicit empty A when sharing an unfinished comparison.
     if compared:

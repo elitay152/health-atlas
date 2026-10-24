@@ -114,7 +114,7 @@ def test_directory_filters_details_and_county_context(tmp_path, monkeypatch):
     app.button(key="hospital_open_county").click().run()
     assert app.selectbox(key="profile_county").value == "41039"
     assert not app.exception
-    app.selectbox(key="view_selector").select("access").run()
+    app.radio(key="view_selector").set_value("access").run()
     app.text_input(key="hospital_query").set_value("Portland").run()
     assert len(result_table(app)) == 1
     assert app.selectbox(key="hospital_detail").value is None

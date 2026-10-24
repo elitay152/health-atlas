@@ -59,16 +59,16 @@ def test_state_views_links_missingness_and_exports(state_caches, region):
     assert not app.exception
     assert app.selectbox(key='profile_county').value == first
     assert len(app.selectbox(key='profile_county').options) == region.county_count
-    assert app.selectbox(key='region_selector').value == region.abbr
+    assert app.radio(key='region_selector').value == region.abbr
     assert any(f'{region.county_count} {region.name} counties' in item.value for item in app.caption)
     assert any('2019–2023' in item.value for item in app.caption)
     assert any(m.label == 'Population' and m.value == '10,000' for m in app.metric)
     assert any(m.label == 'Below poverty level' and m.value == 'Unavailable' for m in app.metric)
-    app.selectbox(key='view_selector').select('compare').run()
+    app.radio(key='view_selector').set_value('compare').run()
     table = next(item.value for item in app.dataframe if 'Measure' in item.value.columns)
     name = region.counties()[first]
     assert table[table.Measure == 'Current asthma'][name].iloc[0] == 'Unavailable'
-    app.selectbox(key='view_selector').select('explore').run()
+    app.radio(key='view_selector').set_value('explore').run()
     shared = dict(app.query_params)
     assert shared.get('state', 'OR') == region.abbr
     other = AppTest.from_file(APP, default_timeout=20)
@@ -109,15 +109,17 @@ def test_washington_never_renders_oregon_only_sources(state_caches, monkeypatch)
     assert not app.exception
     assert app.toggle(key='demo_mode').disabled and not app.toggle(key='demo_mode').value
     assert app.query_params['compare'] == '53033'
-    assert not any(key in app.query_params for key in ['local', 'tract', 'area', 'area_compare', 'area_b'])
+    assert not any(key in app.query_params for key in ['local', 'tract'])
+    assert app.query_params['area']=='' and app.query_params['area_b']==''
+    assert app.query_params['area_compare']=='1'
     assert any('Oregon-only' in item.value for item in app.warning)
-    assert any('Area comparisons are currently available for Oregon only' in item.value for item in app.info)
+    assert any('No Area B was loaded' in item.value for item in app.warning)
 
 
 def test_switching_states_resets_selection_and_demo(state_caches):
     app = view(regions.OREGON, county='41051', compare='41051', demo='1')
     assert not app.exception and app.toggle(key='demo_mode').value
-    app.selectbox(key='region_selector').set_value('WA').run()
+    app.radio(key='region_selector').set_value('WA').run()
     assert not app.exception
     assert app.query_params['state'] == 'WA'
     assert not app.toggle(key='demo_mode').value
@@ -125,7 +127,7 @@ def test_switching_states_resets_selection_and_demo(state_caches):
     assert all(name in regions.WASHINGTON.counties().values() for name in app.session_state['compare_counties'])
     app.selectbox(key='profile_county').set_value('53033').run()
     assert app.query_params['county'] == '53033'
-    app.selectbox(key='region_selector').set_value('OR').run()
+    app.radio(key='region_selector').set_value('OR').run()
     assert not app.exception
     assert 'state' not in app.query_params
     assert app.selectbox(key='profile_county').value is None

@@ -51,9 +51,9 @@ def test_shared_demo_profile_and_add_comparison(monkeypatch):
     assert app.selectbox(key="profile_county").value == "41051"
     assert app.query_params["county"] == "41051"
     # Lane and Clackamas remain selected; add Multnomah via the profile action.
-    app.selectbox(key="view_selector").select("compare").run()
+    app.radio(key="view_selector").set_value("compare").run()
     app.multiselect[0].set_value(["Lane", "Clackamas"]).run()
-    app.selectbox(key="view_selector").select("explore").run()
+    app.radio(key="view_selector").set_value("explore").run()
     button = next(b for b in app.button if b.label == "Add county to comparison")
     assert not button.disabled
     button.click().run()

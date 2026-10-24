@@ -11,12 +11,13 @@ from oregon_health.data import MEASURES
 from oregon_health.regions import OREGON, get_region
 
 
-def render_summary(codes,year,health_path=None,*,region=OREGON):
+def render_summary(codes,year,health_path=None,*,region=OREGON,controls=None):
+    controls=controls if controls is not None else st.sidebar
     region=get_region(region)
     region.require("service_area_summary")
     if not codes:
         st.session_state['show_area_summary']=False
-    enabled=st.checkbox('Show service-area summary',key='show_area_summary',disabled=not codes,
+    enabled=controls.checkbox('Show service-area summary',key='show_area_summary',disabled=not codes,
         help='Reads saved source snapshots only. No additional API requests are made by this summary.')
     if not enabled:
         return
@@ -39,7 +40,7 @@ def render_summary(codes,year,health_path=None,*,region=OREGON):
         st.caption('Population uncertainty: no combined margin of error is reported. Missing covariance prevents a supported multi-county interval; missing source uncertainty is not zero.')
     st.caption('Hospital listings are deduplicated CMS IDs assigned by source county. Points additionally require a current address fingerprint, an Exact Census response and a passing coordinate/county check. Approximate address points are not verified buildings, capacity or demand. Missing/unreadable sources are not zero.')
     st.markdown('#### County health estimates')
-    measure=st.selectbox('Area health condition',list(MEASURES),format_func=MEASURES.get,key='area_health_condition')
+    measure=controls.selectbox('Area health condition',list(MEASURES),format_func=MEASURES.get,key='area_health_condition')
     health=pd.DataFrame(report['health'])
     selected=health[(health.measure==measure)&(health.status=='Available')].rename(columns={'county_fips':'fips'})
     if selected.empty:

@@ -104,7 +104,7 @@ def test_washington_directory_filters_details_export_and_profile(tmp_path, monke
     app.button(key='hospital_open_county').click().run()
     assert not app.exception and app.selectbox(key='profile_county').value == '53033'
     assert app.query_params['state'] == 'WA' and app.query_params['county'] == '53033'
-    app.selectbox(key='view_selector').select('access').run()
+    app.radio(key='view_selector').set_value('access').run()
     app.selectbox(key='hospital_county').set_value(hospital_ui.UNKNOWN).run()
     table = next(d.value for d in app.dataframe if 'Facility ID' in d.value.columns)
     assert list(table['Facility ID']) == ['005002']

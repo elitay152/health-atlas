@@ -88,7 +88,7 @@ def test_app_empty_cache_failure_does_not_silently_show_demo(tmp_path, monkeypat
     assert not app.exception
     assert app.error
     # Local quality tables remain available; no synthetic health view appears.
-    assert {item.key for item in app.selectbox} == {"region_selector", "view_selector"}
+    assert {item.key for item in app.selectbox} == set()
     assert not any("Estimate (%)" in d.value.columns for d in app.dataframe)
     app.run()
     assert len(calls) == 1
@@ -162,11 +162,11 @@ def test_unreadable_county_cache_keeps_independent_panels(tmp_path, monkeypatch,
     app.run()
     assert not app.exception
     assert any('snapshot could not be read' in error.value for error in app.error)
-    app.selectbox(key='view_selector').select('access').run()
+    app.radio(key='view_selector').set_value('access').run()
     assert not app.exception
     assert app.checkbox(key='show_hospitals')
     assert app.checkbox(key='show_hrsa')
-    app.selectbox(key='view_selector').select('areas').run()
+    app.radio(key='view_selector').set_value('areas').run()
     assert not app.exception
     assert app.multiselect(key='area_counties')
     assert not any(box.key == 'health_measure' for box in app.selectbox)

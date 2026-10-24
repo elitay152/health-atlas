@@ -120,7 +120,7 @@ def render_tracts(county, measure, county_year, demo=False):
         st.info('Tract exploration is available in real-data mode. No real tract records are loaded in this synthetic demo.')
         return result
     if not county:
-        st.info('Choose a County spotlight above, or click the Oregon county map, to explore its tracts.')
+        st.info('Choose a County profile in the sidebar, or click the Oregon county map, to explore its tracts.')
         return result
     if not enabled:
         st.caption('Load local estimates when you need them. County exploration does not wait for tract data.')
