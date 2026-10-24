@@ -114,7 +114,20 @@ def test_null_row_missing_boundary_record_and_year_difference(tmp_path,monkeypat
     assert not v.exception
     assert any('No CDC row is saved' in i.value for i in v.info)
     next(b for b in v.button if b.label=='Back to county overview').click().run()
-    assert v.selectbox(key='tract_selection').value is None and 'tract' not in v.query_params
+    assert not v.exception and not v.toggle(key='show_tracts').value
+    assert not any(s.key=='tract_selection' for s in v.selectbox)
+    assert not any(key in v.query_params for key in ['local','tract','tract_year'])
+    assert v.selectbox(key='profile_county').value=='41051'
+    assert not any(d.key=='tract_table' for d in v.dataframe)
+    # Returning to county view must not resurrect tract mode on later task changes.
+    v.radio(key='view_selector').set_value('sources').run()
+    v.radio(key='view_selector').set_value('explore').run()
+    assert not v.toggle(key='show_tracts').value
+    # The exit action also works without a selected tract.
+    v.toggle(key='show_tracts').set_value(True).run()
+    assert not v.button(key='tract_back').disabled
+    v.button(key='tract_back').click().run()
+    assert not v.exception and not v.toggle(key='show_tracts').value
 
 
 @pytest.mark.parametrize('saved',[True,False])

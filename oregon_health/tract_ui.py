@@ -106,6 +106,8 @@ def _select(allowed,region=OREGON):
 
 
 def _clear():
+    """Exit tract mode without changing the county, condition or county year."""
+    st.session_state['show_tracts'] = False
     st.session_state['tract_selection'] = None
 
 
@@ -211,7 +213,7 @@ def render_tracts(county, measure, county_year, demo=False,*,region=OREGON,contr
         st.warning(f"{len(joined['estimates_without_boundary'])} saved tract records have no compatible boundary and are excluded from this map.")
     select = controls.selectbox('Census tract',list(features),index=None,key='tract_selection',
         placeholder='Choose a tract or click the map',format_func=lambda code:f"{features[code]['properties']['name']} · {code}")
-    st.button('Back to county overview',on_click=_clear,key='tract_back',disabled=select is None)
+    st.button('Back to county overview',on_click=_clear,key='tract_back')
     map_column, detail_column = st.columns([1.6, 1], gap='large')
     with map_column:
         st.pydeck_chart(tract_deck(collection,select,region=region),height=420,key='tract_map',

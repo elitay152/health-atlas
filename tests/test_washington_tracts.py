@@ -112,6 +112,11 @@ def test_ui_sidebar_links_missingness_and_no_source_requests(tmp_path,monkeypatc
     v.radio(key='view_selector').set_value('explore').run()
     assert not v.exception and v.selectbox(key='tract_selection').value==CODE
     assert v.query_params['local']=='1'
+    v.button(key='tract_back').click().run()
+    assert not v.exception and not v.toggle(key='show_tracts').value
+    assert not any(key in v.query_params for key in ['local','tract','tract_year'])
+    assert v.selectbox(key='profile_county').value=='53033'
+    assert not any(d.key=='tract_table' for d in v.dataframe)
 
 
 def test_washington_outage_retains_its_cache_without_oregon_fallback(tmp_path,monkeypatch):
