@@ -2,7 +2,7 @@
 
 Select Washington, then **Service area**. Choose any of its 39 counties, preview membership, download a GeoJSON definition, load a saved definition or copy the browser address. Membership is independent of the health condition, comparison counties, county spotlight and source availability. Empty and disconnected sets are valid; duplicate county IDs are removed.
 
-This release adds **definitions only** in Washington. Washington area summaries and area-to-area comparisons are not enabled; their existing readers still assume Oregon and are not called from this view. Oregon keeps its existing summary/comparison workflows. A definition contains no health estimates, population totals, facility counts or commercial-demand calculation.
+Washington definitions now also support optional [saved-source summaries](washington-area-summaries.md). Washington area-to-area comparisons remain disabled pending their separate state-aware rollout. Oregon keeps its existing summary/comparison workflows. A definition contains no health estimates, population totals, facility counts or commercial-demand calculation.
 
 ## Reproducibility and state safety
 
@@ -22,7 +22,7 @@ uv run pytest -q tests/test_washington_service_areas.py tests/test_service_areas
 uv run streamlit run app.py
 ```
 
-Tests cover both complete county catalogs, empty/duplicate selections, state/revision-pinned links, file tampering, membership-only maps, state switching, unavailable CDC data and prevention of calls to Oregon-only summary/comparison code. Browser checks at 1440×1000 and 390×844 exercise county selection, GeoJSON download, valid re-import, rejection of Oregon/modified files without losing membership, all-39-county links, legacy Oregon links and no browser errors or horizontal overflow.
+Tests cover both complete county catalogs, empty/duplicate selections, state/revision-pinned links, file tampering, membership-only maps, state switching, unavailable CDC data and opt-in summary loading and prevention of calls to Oregon-only comparison code. Browser checks at 1440×1000 and 390×844 exercise county selection, GeoJSON download, valid re-import, rejection of Oregon/modified files without losing membership, all-39-county links, legacy Oregon links and no browser errors or horizontal overflow.
 
 Whole-county membership is an analytical choice. People can cross borders for care, two definitions can overlap, and county selection alone does not establish where clients live or where services are delivered. Cross-area results must account for shared counties rather than adding overlapping totals.
 

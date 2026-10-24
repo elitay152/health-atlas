@@ -111,7 +111,7 @@ def test_washington_never_renders_oregon_only_sources(state_caches, monkeypatch)
     assert app.query_params['compare'] == '53033'
     assert not any(key in app.query_params for key in ['local', 'tract', 'area', 'area_compare', 'area_b'])
     assert any('Oregon-only' in item.value for item in app.warning)
-    assert any('Area summaries and area comparisons are currently available for Oregon only' in item.value for item in app.info)
+    assert any('Area comparisons are currently available for Oregon only' in item.value for item in app.info)
 
 
 def test_switching_states_resets_selection_and_demo(state_caches):
