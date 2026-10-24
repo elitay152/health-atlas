@@ -76,7 +76,7 @@ st.sidebar.selectbox("State", [r.abbr for r in REGIONS.values() if r.deployed],
 region_options = {} if requested_region == OREGON else {"region": requested_region}
 if requested_region != OREGON:
     DB_PATH = health_path(requested_region, DB_PATH.parent)
-    st.info("Washington coverage: county health estimates, Census demographics and CMS hospital listings. Tracts, approximate address matches, shortage designations and service areas are currently available for Oregon only.")
+    st.info("Washington coverage: county health estimates, Census demographics and CMS hospital listings. Optional approximate hospital locations are available. Tracts, shortage designations and service areas are currently available for Oregon only.")
     if any(key in st.query_params for key in ("local", "tract", "tract_year", "area", "area_compare", "area_b")):
         st.warning("Oregon-only tract and service-area settings were omitted from this Washington view.")
 health_options = {} if requested_region == OREGON else {"path": DB_PATH, **region_options}

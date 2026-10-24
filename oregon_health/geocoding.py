@@ -9,13 +9,13 @@ import hashlib
 import io
 import json
 import math
-import os
 from pathlib import Path
-import tempfile
 
 import duckdb
 import requests
 
+from oregon_health.regions import OREGON, get_region, cache_dir, check_identity, ROOT
+from oregon_health.storage import snapshot as publish_snapshot
 from oregon_health.network import reserve_request
 from oregon_health.api_cache import _reserve_refresh
 from oregon_health.data import DB_PATH as HEALTH_PATH
@@ -51,9 +51,10 @@ def _inside_ring(x, y, ring):
     return inside
 
 
-def in_county(lon, lat, fips):
+def in_county(lon, lat, fips, *, region=OREGON):
     """Conservative match to the bundled generalized county geometry."""
-    for feature in boundaries()["features"]:
+    collection = boundaries() if get_region(region) == OREGON else boundaries(region)
+    for feature in collection["features"]:
         if feature["properties"]["fips"] != fips:
             continue
         geometry = feature["geometry"]
@@ -77,8 +78,11 @@ def _read(response, limit):
         return b"".join(chunks)
 
 
-def parse_matches(raw, requested):
+def parse_matches(raw, requested, *, region=OREGON):
     """Accept only exact, finite, county-consistent matches; retain other statuses."""
+    region = get_region(region)
+    _validate_records(list(requested.values()), region)
+    west, south, east, north = region.bounds
     seen, matches = set(), []
     for row in csv.reader(io.StringIO(raw.decode("utf-8-sig"), newline="")):
         if len(row) < 3 or row[0] not in requested or row[0] in seen:
@@ -103,13 +107,13 @@ def parse_matches(raw, requested):
                 except (ValueError, TypeError):
                     lon = lat = None
                 if (lon is None or not math.isfinite(lon) or not math.isfinite(lat)
-                        or not -124.8 <= lon <= -116.3 or not 41.9 <= lat <= 46.4):
+                        or not west <= lon <= east or not south <= lat <= north):
                     status = "invalid_coordinates"
                 elif not matched_address:
                     status = "missing_match_address"
                 elif not record.get("county_fips"):
                     status = "county_unresolved"
-                elif not in_county(lon, lat, record["county_fips"]):
+                elif not in_county(lon, lat, record["county_fips"], region=region):
                     status = "county_mismatch"
                 else:
                     status = "matched_exact"
@@ -123,13 +127,31 @@ def parse_matches(raw, requested):
     return matches
 
 
-def fetch(records):
-    if not records or len(records) > MAX_ADDRESSES or len({r["facility_id"] for r in records}) != len(records):
+def location_path(region=OREGON):
+    region = get_region(region)
+    return DB_PATH if region == OREGON else cache_dir(region, DB_PATH.parent) / 'hospital_locations.duckdb'
+
+
+def boundary_hash(region):
+    return hashlib.sha256((ROOT / 'assets' / region.boundary_file).read_bytes()).hexdigest()
+
+
+def _validate_records(records, region):
+    if len(records) > MAX_ADDRESSES or len({r['facility_id'] for r in records}) != len(records):
+        raise ValueError('Expected a bounded set of unique hospital identifiers')
+    if any(r.get('state') != region.abbr or (r.get('county_fips') is not None
+           and r['county_fips'] not in region.counties()) for r in records):
+        raise ValueError('Hospital addresses belong to another region or county catalog')
+
+
+def fetch(records, *, region=OREGON):
+    region = get_region(region)
+    region.require("hospital_locations")
+    _validate_records(records, region)
+    if not records:
         raise ValueError("Expected a bounded set of unique hospital identifiers")
     requested, missing = {}, []
     for record in records:
-        if record.get("state") != "OR":
-            raise ValueError("Only Oregon hospital addresses are supported")
         if all(record.get(k) for k in ("address", "city", "zip_code")):
             requested[record["facility_id"]] = record
         else:
@@ -147,43 +169,47 @@ def fetch(records):
         output = io.StringIO(newline="")
         writer = csv.writer(output)
         for facility_id, r in requested.items():
-            writer.writerow([facility_id, r["address"], r["city"], "OR", r["zip_code"]])
+            writer.writerow([facility_id, r["address"], r["city"], region.abbr, r["zip_code"]])
         reserve_request(BATCH_URL)
         raw = _read(requests.post(BATCH_URL, data={"benchmark": benchmark_id},
                                  files={"addressFile": ("hospitals.csv", output.getvalue().encode(), "text/csv")},
                                  timeout=(5, 60), allow_redirects=False, stream=True), 1_000_000)
-        matches = parse_matches(raw, requested)
+        matches = parse_matches(raw, requested, region=region)
     return matches + missing, dict(source_url=SOURCE_URL, benchmark=BENCHMARK, benchmark_id=benchmark_id,
-                                    fetched_at=datetime.now(timezone.utc), fingerprint=fingerprint(records))
+                                    fetched_at=datetime.now(timezone.utc), fingerprint=fingerprint(records),
+                                    state_fips=region.state_fips, boundary_sha256=boundary_hash(region))
 
 
-def store(matches, provenance, path=DB_PATH):
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    handle, filename = tempfile.mkstemp(dir=path.parent, suffix=".duckdb")
-    os.close(handle)
-    temp = Path(filename)
-    temp.unlink()
-    try:
+def store(matches, provenance, path=None, *, region=OREGON):
+    region = get_region(region)
+    region.require('hospital_locations')
+    if provenance.get('state_fips', region.state_fips) != region.state_fips:
+        raise ValueError('Location provenance belongs to another region')
+    path = Path(path if path is not None else location_path(region))
+    def validate(previous):
+        with duckdb.connect(str(previous), read_only=True) as db:
+            check_identity(db, region)
+    with publish_snapshot(path, validate) as temp:
         with duckdb.connect(str(temp)) as db:
             db.execute("""CREATE TABLE locations (facility_id VARCHAR PRIMARY KEY, address_hash VARCHAR,
                 location_status VARCHAR, longitude DOUBLE, latitude DOUBLE, matched_address VARCHAR)""")
             db.executemany("INSERT INTO locations VALUES (?, ?, ?, ?, ?, ?)", matches)
             db.execute("""CREATE TABLE provenance (source_url VARCHAR, benchmark VARCHAR, benchmark_id VARCHAR,
-                fetched_at TIMESTAMP, fingerprint VARCHAR)""")
-            db.execute("INSERT INTO provenance VALUES (?, ?, ?, ?, ?)", [provenance["source_url"], provenance["benchmark"],
+                fetched_at TIMESTAMP, fingerprint VARCHAR, state_fips VARCHAR, boundary_sha256 VARCHAR)""")
+            db.execute("INSERT INTO provenance VALUES (?, ?, ?, ?, ?, ?, ?)", [provenance["source_url"], provenance["benchmark"],
                        provenance["benchmark_id"], provenance["fetched_at"].astimezone(timezone.utc).replace(tzinfo=None),
-                       provenance["fingerprint"]])
-        os.replace(temp, path)
-    finally:
-        temp.unlink(missing_ok=True)
+                       provenance["fingerprint"], region.state_fips, provenance.get("boundary_sha256", boundary_hash(region))])
 
 
-def snapshot(records, path=DB_PATH):
+def snapshot(records, path=None, *, region=OREGON):
     """Join only current addresses; changed addresses never inherit old coordinates."""
+    region = get_region(region)
+    _validate_records(records, region)
+    path = path if path is not None else location_path(region)
     cached, provenance = {}, None
     if Path(path).exists():
         with duckdb.connect(str(path), read_only=True) as db:
+            check_identity(db, region)
             cached = {r[0]: dict(zip(COLUMNS, r)) for r in db.execute("SELECT * FROM locations").fetchall()}
             cursor = db.execute("SELECT * FROM provenance")
             provenance = dict(zip([c[0] for c in cursor.description], cursor.fetchone()))
@@ -192,6 +218,23 @@ def snapshot(records, path=DB_PATH):
     for record in records:
         previous = cached.get(record["facility_id"])
         if previous and previous["address_hash"] == address_hash(record):
+            previous = dict(previous)
+            if previous['location_status'] == 'matched_exact':
+                lon, lat = previous['longitude'], previous['latitude']
+                west, south, east, north = region.bounds
+                if not all(record.get(k) for k in ('address', 'city', 'zip_code')):
+                    previous.update(location_status='missing_address', longitude=None, latitude=None)
+                elif (lon is None or lat is None or not math.isfinite(lon) or not math.isfinite(lat)
+                        or not west <= lon <= east or not south <= lat <= north):
+                    previous.update(location_status='invalid_coordinates', longitude=None, latitude=None)
+                elif not previous['matched_address']:
+                    previous.update(location_status='missing_match_address', longitude=None, latitude=None)
+                elif not record.get('county_fips'):
+                    previous.update(location_status='county_unresolved', longitude=None, latitude=None)
+                elif not in_county(lon, lat, record['county_fips'], region=region):
+                    previous.update(location_status='county_mismatch', longitude=None, latitude=None)
+            else:
+                previous.update(longitude=None, latitude=None)
             joined[record["facility_id"]] = previous
         else:
             joined[record["facility_id"]] = dict(facility_id=record["facility_id"], address_hash=address_hash(record),
@@ -200,19 +243,27 @@ def snapshot(records, path=DB_PATH):
     return joined, provenance
 
 
-def needs_refresh(records, path=DB_PATH):
-    _, provenance = snapshot(records, path)
+def needs_refresh(records, path=None, *, region=OREGON):
+    _, provenance = snapshot(records, path, region=region)
     return (provenance is None or provenance["fingerprint"] != fingerprint(records)
+            or provenance.get("boundary_sha256") not in (None, boundary_hash(get_region(region)))
             or datetime.now(timezone.utc) - provenance["fetched_at"] >= CACHE_TTL)
 
 
-def refresh(records, path=DB_PATH, force=False):
-    if not force and not needs_refresh(records, path):
+def refresh(records, path=None, force=False, *, region=OREGON):
+    region = get_region(region)
+    region.require("hospital_locations")
+    _validate_records(records, region)
+    path = path if path is not None else location_path(region)
+    if Path(path).exists():
+        with duckdb.connect(str(path), read_only=True) as db:
+            check_identity(db, region)
+    if not force and not needs_refresh(records, path, region=region):
         return
     _reserve_refresh(path)
     try:
-        matches, provenance = fetch(records)
-        store(matches, provenance, path)
+        matches, provenance = fetch(records) if region == OREGON else fetch(records, region=region)
+        store(matches, provenance, path, region=region)
     except Exception:
         record_refresh(path, "xubh-q36u", "failed")
         raise

@@ -39,14 +39,15 @@ def export_csv(records, provenance, locations=None, location_provenance=None):
     columns = [*hospitals.COLUMNS, "emergency_status", "coordinate_status",
                "dataset", "source_url", "released", "modified", "fetched_at", "sha256",
                "longitude", "latitude", "location_status", "matched_address",
-               "location_source", "location_benchmark", "location_benchmark_id", "location_fetched_at", "location_address_hash"]
+               "location_source", "location_benchmark", "location_benchmark_id", "location_fetched_at", "location_address_hash", "location_state_fips", "location_boundary_sha256", "location_fingerprint"]
     def location_fields(record):
         location = (locations or {}).get(record["facility_id"], {})
         return {**{k: location.get(k) for k in ("longitude", "latitude", "matched_address")},
                 "location_status": location.get("location_status", "not_geocoded"),
                 "location_address_hash": location.get("address_hash"),
                 **{f"location_{name}": (location_provenance or {}).get(key) for name, key in (
-                    ("source", "source_url"), ("benchmark", "benchmark"), ("benchmark_id", "benchmark_id"), ("fetched_at", "fetched_at"))}}
+                    ("source", "source_url"), ("benchmark", "benchmark"), ("benchmark_id", "benchmark_id"), ("fetched_at", "fetched_at"), ("state_fips", "state_fips"),
+                    ("boundary_sha256", "boundary_sha256"), ("fingerprint", "fingerprint"))}}
     rows = [{**r, **location_fields(r), "emergency_status": emergency_label(r["emergency_services"]),
              "coordinate_status": "Not supplied by CMS",
              **{key: provenance[key] for key in columns if key in provenance}} for r in records]
@@ -79,10 +80,10 @@ def _detail(record, context_available, location=None, *, region=OREGON):
             st.text(f"Matched address: {location['matched_address']}")
             st.caption(f"Approximate point: {location['latitude']:.5f}, {location['longitude']:.5f}. "
                        "Census address interpolation, not a verified building or entrance.")
-    elif region == OREGON:
+    elif "hospital_locations" in region.supported_sources:
         st.caption("CMS supplies no coordinates. Enable approximate hospital locations to request Census address matches.")
     else:
-        st.caption("CMS supplies no coordinates. Approximate address locations have not been validated for Washington; no points are mapped.")
+        st.caption(f"CMS supplies no coordinates. Approximate address locations are unavailable for {region.name}; no points are mapped.")
     fips = record["county_fips"]
     if fips in county_names(region) and context_available:
         st.button(f"View {county_names(region)[fips]} County profile", key="hospital_open_county",
@@ -180,10 +181,10 @@ def render_hospitals(demo=False, context_available=True, *, region=OREGON):
         st.info("No listed hospitals match these filters. Try another county or clear the search and type filters. This does not establish an absence of healthcare services.")
         return
     if "hospital_locations" in region.supported_sources:
-        locations, location_provenance = render_locations(records, filtered)
+        locations, location_provenance = render_locations(records, filtered, **region_options)
     else:
         locations, location_provenance = {}, None
-        st.info("CMS supplies no coordinates. Washington address matching has not been validated; hospital map points are unavailable. Listings remain searchable below.")
+        st.info(f"CMS supplies no coordinates. Address locations are unavailable for {region.name}. Listings remain searchable below.")
     table_col, detail_col = st.columns([1.5, 1], gap="large")
     with table_col:
         frame = pd.DataFrame([{

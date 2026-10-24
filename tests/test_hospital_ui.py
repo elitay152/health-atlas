@@ -17,7 +17,7 @@ def records():
     return [dict(zip(hospitals.COLUMNS, r)) for r in [
         ("003801", "Synthetic Hospital", "1 Example St", "Eugene", "OR", "00123", "LANE",
          "41039", "Critical Access Hospitals", "Government", True),
-        ("003802", "Synthetic Hospital", None, "Portland", "OR", "97201", "MULTNOMAH",
+        ("003802", "Synthetic Hospital", "2 Example St", "Portland", "OR", "97201", "MULTNOMAH",
          "41051", "Acute Care Hospitals", None, False),
         ("003803", "Other Synthetic Facility", "3 Example St", None, "OR", None, "Unknown county",
          None, None, None, None),

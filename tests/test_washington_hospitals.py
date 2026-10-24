@@ -7,7 +7,7 @@ import pytest
 import requests
 from streamlit.testing.v1 import AppTest
 
-from oregon_health import access_quality, api_cache, census, data, hospitals, hospital_ui, regions, storage
+from oregon_health import access_quality, api_cache, census, data, hospitals, hospital_ui, regions, storage, geocoding
 from test_hospitals import row, csv_bytes, provenance
 
 WA = regions.WASHINGTON
@@ -80,8 +80,8 @@ def app_with_wa(tmp_path, monkeypatch, *, health=True, cached=True):
     def offline(*a, **kw): raise requests.ConnectionError('Synthetic unavailable source')
     monkeypatch.setattr(api_cache, 'refresh', offline)
     monkeypatch.setattr(census, 'context', offline)
-    def forbidden(*a, **kw): pytest.fail('Washington must not attempt unvalidated geocoding')
-    monkeypatch.setattr(hospital_ui, 'render_locations', forbidden)
+    def forbidden(*a, **kw): pytest.fail('The location toggle is off; no geocoding request is allowed')
+    monkeypatch.setattr(geocoding, 'refresh', forbidden)
     path = hospitals.hospital_path(WA)
     if cached: hospitals.store(hospitals.normalize(csv_bytes(wa_rows()), region=WA), provenance(), path, region=WA)
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / 'app.py', default_timeout=20)
@@ -98,7 +98,7 @@ def test_washington_directory_filters_details_export_and_profile(tmp_path, monke
     assert any(m.label == 'Washington hospitals listed' and m.value == '2' for m in app.metric)
     assert any(m.label == 'Counties represented' and m.value == '1 / 39' for m in app.metric)
     assert len(app.selectbox(key='hospital_county').options) == 41
-    assert not any(c.key == 'show_hospital_locations' for c in app.checkbox)
+    assert not app.checkbox(key='show_hospital_locations').value
     app.selectbox(key='hospital_detail').set_value('005001').run()
     assert any('Seattle, WA 00123' in t.value for t in app.text)
     app.button(key='hospital_open_county').click().run()

@@ -52,9 +52,10 @@ def county_deck(frame, selected, *, region=OREGON):
     )
 
 
-def hospital_deck(records, selected=None):
+def hospital_deck(records, selected=None, *, region=OREGON):
     """Approximate address points over county boundaries; no prevalence encoding."""
-    collection = deepcopy(boundaries())
+    region = get_region(region)
+    collection = deepcopy(boundaries(region))
     for feature in collection["features"]:
         props = feature["properties"]
         props.update(name=f"{props['name']} County", detail="Generalized county boundary")
@@ -71,7 +72,7 @@ def hospital_deck(records, selected=None):
                       get_line_color=[250, 249, 244], stroked=True, line_width_min_pixels=1,
                       get_radius=500, radius_min_pixels=6, radius_max_pixels=12),
         ],
-        initial_view_state=pdk.ViewState(latitude=44.15, longitude=-120.55, zoom=4.8, min_zoom=4, max_zoom=13),
+        initial_view_state=pdk.ViewState(latitude=region.center[1], longitude=region.center[0], zoom=region.zoom, min_zoom=4, max_zoom=13),
         map_provider=None, map_style=None,
         tooltip={"text": "{name}\n{detail}"},
     )

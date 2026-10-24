@@ -9,6 +9,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
+from oregon_health.regions import OREGON, get_region
 from oregon_health import geocoding
 from oregon_health.api_cache import RefreshLimited
 from oregon_health.map import hospital_deck, selected_hospital
@@ -30,27 +31,30 @@ def _open_hospital(ids):
         st.session_state["hospital_detail"] = facility_id
 
 
-def render_locations(records, filtered):
+def render_locations(records, filtered, *, region=OREGON):
+    region = get_region(region)
+    region.require("hospital_locations")
+    region_options = {} if region == OREGON else {"region": region}
     if not st.checkbox("Show approximate hospital locations", key="show_hospital_locations",
                        help="Sends the directory's published hospital addresses to the Census Geocoder. No search text or patient data is sent."):
         return {}, None
     st.caption("Address matches are approximate street locations, not verified buildings, entrances or travel-time estimates. Only exact, county-consistent matches are mapped; other records remain in the directory.")
-    path = geocoding.DB_PATH
+    path = geocoding.location_path(region)
     retry = st.button("Refresh address matches", key="geocode_refresh")
     attempt_key = f"geocode_attempt:{path}:{geocoding.fingerprint(records)}"
     try:
-        if retry or (not st.session_state.get(attempt_key) and geocoding.needs_refresh(records, path)):
+        if retry or (not st.session_state.get(attempt_key) and geocoding.needs_refresh(records, path, **region_options)):
             st.session_state[attempt_key] = True
             try:
                 with st.spinner("Matching public hospital addresses with Census…"):
-                    geocoding.refresh(records, path, force=retry)
+                    geocoding.refresh(records, path, force=retry, **region_options)
                 st.session_state.pop(attempt_key, None)
             except RefreshLimited as exc:
                 st.info(str(exc))
             except (requests.RequestException, ValueError, KeyError, TypeError, OSError, duckdb.Error):
                 logging.getLogger(__name__).exception("Hospital geocoding failed")
                 st.warning("Address matching could not be refreshed. The hospital directory and health estimates remain available.")
-        locations, provenance = geocoding.snapshot(records, path)
+        locations, provenance = geocoding.snapshot(records, path, **region_options)
     except (ValueError, KeyError, TypeError, OSError, duckdb.Error):
         logging.getLogger(__name__).exception("Hospital location snapshot unavailable")
         st.info("Hospital locations are unavailable. The directory remains usable.")
@@ -67,11 +71,11 @@ def render_locations(records, filtered):
     points = [r for r in visible if r["location_status"] == "matched_exact"]
     st.caption(f"{len(points)} of {len(visible)} filtered hospitals have mapped address matches. Copper: address match · Teal: selected hospital.")
     if points:
-        st.pydeck_chart(hospital_deck(points, st.session_state.get("hospital_detail")), height=420,
+        st.pydeck_chart(hospital_deck(points, st.session_state.get("hospital_detail"), **region_options), height=420,
                         key="hospital_location_map",
                         on_select=partial(_open_hospital, tuple(r["facility_id"] for r in filtered)),
                         selection_mode="single-object",
-                        alt="Approximate Census address matches over Oregon county boundaries. Use the hospital details selector as a keyboard-accessible alternative.")
+                        alt=f"Approximate Census address matches over {region.name} county boundaries. Use the hospital details selector as a keyboard-accessible alternative.")
         st.caption("Click a point to open its hospital details below. County boundaries are generalized; markers do not define service areas.")
     else:
         st.info("No accepted address matches for these filters. Unmatched records remain available in the table and details selector.")

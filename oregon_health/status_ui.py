@@ -76,4 +76,4 @@ def render_data_status(path, year, dataset, demo=False, *, region=OREGON):
         if region == OREGON:
             render_access_quality(Path(path).parent, demo)
         else:
-            st.caption("Washington CMS listing coverage is reported in the hospital directory. Geocoder and shortage-designation coverage is not available for Washington; it has not been evaluated as zero.")
+            st.caption("Washington CMS listing and address-match coverage are reported in the hospital directory. Shortage-designation coverage is not available for Washington; it has not been evaluated as zero.")

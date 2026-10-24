@@ -38,6 +38,7 @@ def _read(path, kind):
             rows=_rows(db,'SELECT facility_id,name,address,city,state,zip_code,county,county_fips,hospital_type,ownership,emergency_services FROM hospitals')
             provenance=_rows(db,'SELECT released,modified,fetched_at FROM provenance')[0]
         elif kind=='Address matches':
+            check_identity(db)  # This source audit remains Oregon-only.
             rows=_rows(db,'SELECT facility_id,address_hash,location_status,longitude,latitude,matched_address FROM locations')
             provenance=_rows(db,'SELECT benchmark,benchmark_id,fetched_at,fingerprint FROM provenance')[0]
         else:
