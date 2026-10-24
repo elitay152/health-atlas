@@ -1,0 +1,6 @@
+interface:
+  display_name: "Health Atlas Design"
+  short_description: "Review Health Atlas navigation, maps and analytical views"
+  default_prompt: "Use $health-atlas-design to review or refine Health Atlas while preserving its data meaning, accessible controls and region isolation."
+policy:
+  allow_implicit_invocation: false
