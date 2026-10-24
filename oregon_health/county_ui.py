@@ -193,7 +193,7 @@ def _render_health(db, requested_region, view, use_demo, dataset, region_options
                                               measure=measure, estimate_year=year, confidence=95, unit="percent",
                                               source=export_source, imported_at=str(export_imported))
                 st.download_button("Download comparison CSV", county_export.to_csv(index=False), f"health-atlas-{requested_region.name.lower()}.csv", "text/csv")
-        local_view = render_tracts(fips, measure, year, use_demo) if requested_region == OREGON else {}
+        local_view = render_tracts(fips, measure, year, use_demo, controls=controls,**region_options)
     else:
         selected = controls.multiselect('Counties to compare', options, key='compare_counties')
         visible = frame[frame.county.isin(selected)]
