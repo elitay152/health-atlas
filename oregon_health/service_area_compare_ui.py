@@ -53,7 +53,7 @@ def render_comparison(codes,year,health_path=None):
     years=sorted({year,*range(2015,2025)},reverse=True)
     if 'area_b_year' not in st.session_state:
         requested=st.query_params.get('area_b_year')
-        desired=int(requested) if requested and requested.isdigit() and len(requested)==4 else year
+        desired=next((candidate for candidate in years if str(candidate)==requested),year)
         st.session_state['area_b_year']=desired if desired in years else year
         if requested and (str(desired)!=requested or desired not in years):
             st.warning('The linked Area B year is unsupported; showing the selected year below.')
