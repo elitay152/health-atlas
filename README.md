@@ -2,6 +2,39 @@
 
 A shared Python and SQL project exploring county health in Oregon and Washington. It compares nine adult health conditions using CDC PLACES county estimates.
 
+## Choose a task
+
+The **View** selector keeps one task on screen at a time, on desktop and mobile:
+
+| View | What you can do |
+| --- | --- |
+| Explore counties | Choose a measure/year and county; see the map and county profile together, then drill into Oregon tracts. |
+| Compare counties | Choose comparison counties, inspect condition patterns and optional demographics, and download results. |
+| Service areas | Define/save/load whole-county membership; Oregon also supports saved-source summaries and area comparisons. |
+| Healthcare access | Search CMS hospitals, show optional approximate address matches, and explore HRSA shortage designations. |
+| Sources & methods | Inspect snapshot coverage, dates and interpretation guidance; explicitly refresh county data when needed. |
+
+The state selector and synthetic-demo setting apply across views. County, comparison,
+area and access-filter selections survive view changes within the session. Changing
+states clears selections to prevent geography mixing. County comparison, tract and
+area settings are included in share links; hospital search/filter settings remain
+local to the session.
+
+Links include a validated `view=explore|compare|areas|access|sources` parameter.
+Existing county/tract links open Explore counties, area links open Service areas,
+and comparison-only links open Compare counties. If a legacy link contains both
+county and area settings, it opens Service areas; the other valid settings remain
+available when switching tasks. Unknown query fields are removed. Source and access
+views do not automatically fetch CDC county data, and saved-source area analysis
+never fetches missing sources. Use the source panels to load them explicitly.
+
+[Desktop preview](docs/images/task-navigation-desktop.png) · [Mobile preview](docs/images/task-navigation-mobile.png)
+
+Application structure: `app.py` owns the shell and task dispatch;
+`oregon_health/navigation.py` validates routing and preserves analytical state across
+Streamlit widget cleanup; `oregon_health/county_ui.py` renders county exploration and
+comparison. Existing independent source and area renderers retain their contracts.
+
 ## Run locally
 
 Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
@@ -45,7 +78,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the issue and pull request workflow. 
 
 Project structure:
 
-- `app.py`: Streamlit county selector, chart, uncertainty table and CSV export.
+- `app.py`: shared Streamlit shell and explicit task dispatch.
+- `oregon_health/navigation.py`: view links, state transitions and durable selections.
+- `oregon_health/county_ui.py`: county map/profile and comparison views.
 - `oregon_health/data.py`: data validation and parameterized DuckDB queries.
 - `oregon_health/import_data.py`: CDC download and source metadata.
 - `oregon_health/api_cache.py`: persistent API cache, expiry and refresh.
@@ -74,7 +109,7 @@ Boundaries are bundled locally, so deployment needs no map API key, tile provide
 
 ## County profiles and sharing
 
-Click a county on the map to open **County spotlight**, or use the keyboard-accessible **County profile** selector immediately below the map. A profile shows three headline estimates plus a chart covering all nine conditions, with 95% confidence intervals for the selected estimate year. Missing measures say **Unavailable**; data from a different year is not silently substituted. **Add county to comparison** adds the county to the existing comparison when it has a record for the current map measure.
+Click a county on the map to open **County spotlight**, or use the keyboard-accessible **County profile** selector above the map. A profile shows three headline estimates plus a chart covering all nine conditions, with 95% confidence intervals for the selected estimate year. Missing measures say **Unavailable**; data from a different year is not silently substituted. **Add county to comparison** adds the county to the existing comparison when it has a record for the current map measure.
 
 Selecting a profile updates the browser URL. Copy it to share the county, year, current measure and explicit synthetic demo mode. For example, `?county=41051&year=2023&measure=DIABETES&demo=0` opens Multnomah County using real data. Links refer to the deployment's configured CDC release, not an immutable historical snapshot. Unknown county IDs are ignored with a warning, and unavailable year/measure options fall back to available data shown in the controls. Clearing the profile removes the county parameter.
 

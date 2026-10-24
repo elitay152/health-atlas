@@ -51,7 +51,9 @@ def app_with_health(tmp_path, monkeypatch):
     data.store(data.demo_rows(), "Synthetic test fixture", path)
     monkeypatch.setattr(data, "DB_PATH", path)
     monkeypatch.setattr(api_cache, "needs_refresh", lambda dataset: False)
-    return AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py", default_timeout=15)
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py", default_timeout=15)
+    app.query_params["view"] = "compare"
+    return app
 
 
 def test_comparison_ui_opt_in_and_outage(tmp_path, monkeypatch):

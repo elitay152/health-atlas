@@ -46,7 +46,7 @@ def county_deck(frame, selected, *, region=OREGON):
             get_line_width="properties.line_width", line_width_units="'pixels'", line_width_min_pixels=1, line_width_max_pixels=3,
             auto_highlight=True, highlight_color=[184, 106, 64, 80],
         )],
-        initial_view_state=pdk.ViewState(latitude=region.center[1], longitude=region.center[0], zoom=region.zoom, min_zoom=4, max_zoom=10),
+        initial_view_state=pdk.ViewState(latitude=region.center[1], longitude=region.center[0], zoom=min(region.zoom, 4.5), min_zoom=4, max_zoom=10),
         map_provider=None, map_style=None,
         tooltip={"text": "{name} County\nPrevalence: {estimate}\n95% confidence interval: {interval}"},
     )
@@ -72,7 +72,7 @@ def hospital_deck(records, selected=None, *, region=OREGON):
                       get_line_color=[250, 249, 244], stroked=True, line_width_min_pixels=1,
                       get_radius=500, radius_min_pixels=6, radius_max_pixels=12),
         ],
-        initial_view_state=pdk.ViewState(latitude=region.center[1], longitude=region.center[0], zoom=region.zoom, min_zoom=4, max_zoom=13),
+        initial_view_state=pdk.ViewState(latitude=region.center[1], longitude=region.center[0], zoom=min(region.zoom, 4.5), min_zoom=4, max_zoom=13),
         map_provider=None, map_style=None,
         tooltip={"text": "{name}\n{detail}"},
     )

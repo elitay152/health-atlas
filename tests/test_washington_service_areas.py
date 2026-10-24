@@ -57,6 +57,7 @@ def test_washington_area_links_state_switch_and_source_independence(tmp_path,mon
     monkeypatch.setattr(service_area_ui,'render_comparison',forbidden)
     monkeypatch.setattr(requests,'get',forbidden)
     monkeypatch.setattr(requests,'post',forbidden)
+    app.query_params['view']='areas'
     app.run()
     assert not app.exception and 'area' not in app.query_params
     assert len(app.multiselect(key='area_counties').options)==39
@@ -69,8 +70,10 @@ def test_washington_area_links_state_switch_and_source_independence(tmp_path,mon
     other=AppTest.from_file(Path(__file__).resolve().parents[1]/'app.py',default_timeout=20)
     other.query_params.update(linked);other.run()
     assert not other.exception and other.multiselect(key='area_counties').value==['53033','53061']
+    app.selectbox(key='view_selector').select('compare').run()
     app.selectbox(key='health_measure').set_value('OBESITY').run()
     app.multiselect(key='compare_counties').set_value([]).run()
+    app.selectbox(key='view_selector').select('areas').run()
     assert app.multiselect(key='area_counties').value==['53033','53061']
     app.button(key='area_clear').click().run()
     assert app.query_params['area']=='' and app.multiselect(key='area_counties').value==[]
@@ -86,7 +89,7 @@ def test_washington_area_links_state_switch_and_source_independence(tmp_path,mon
 def test_washington_area_is_available_without_cdc(tmp_path,monkeypatch):
     app,_=app_with_wa(tmp_path,monkeypatch,health=False,cached=False)
     params=areas.link_params(['53011','53033'],region=regions.WASHINGTON)
-    app.query_params.update(params);app.run()
+    app.query_params.update(params | {'view':'areas'});app.run()
     assert not app.exception
     assert app.query_params['state']=='WA' and app.query_params['area']=='53011,53033'
     assert app.multiselect(key='area_counties').value==['53011','53033']

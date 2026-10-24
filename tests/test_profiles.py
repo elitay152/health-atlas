@@ -51,11 +51,13 @@ def test_shared_demo_profile_and_add_comparison(monkeypatch):
     assert app.selectbox(key="profile_county").value == "41051"
     assert app.query_params["county"] == "41051"
     # Lane and Clackamas remain selected; add Multnomah via the profile action.
+    app.selectbox(key="view_selector").select("compare").run()
     app.multiselect[0].set_value(["Lane", "Clackamas"]).run()
+    app.selectbox(key="view_selector").select("explore").run()
     button = next(b for b in app.button if b.label == "Add county to comparison")
     assert not button.disabled
     button.click().run()
-    assert "Multnomah" in app.multiselect[0].value
+    assert "41051" in app.query_params["compare"]
     assert not app.exception
     # Profile selector updates shareable link without changing comparison.
     app.selectbox(key="profile_county").select("41039").run()

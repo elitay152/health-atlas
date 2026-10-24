@@ -128,7 +128,9 @@ def app_fixture(tmp_path,monkeypatch,cached=True):
     monkeypatch.setattr(api_cache,'needs_refresh',lambda *a:False)
     path=tmp_path/'hrsa.duckdb';monkeypatch.setattr(hrsa,'DB_PATH',path)
     if cached:hrsa.store(records(),provenance(),path)
-    return AppTest.from_file(Path(__file__).resolve().parents[1]/'app.py',default_timeout=15)
+    app=AppTest.from_file(Path(__file__).resolve().parents[1]/'app.py',default_timeout=15)
+    app.query_params['view']='access'
+    return app
 
 
 def test_opt_in_filters_population_warning_details_and_demo(tmp_path,monkeypatch):
@@ -155,7 +157,7 @@ def test_outage_leaves_health_usable_and_no_retries_on_filter_changes(tmp_path,m
     monkeypatch.setattr(hrsa,'refresh',offline)
     app.run().checkbox(key='show_hrsa').check().run()
     assert not app.exception and len(calls)==1
-    app.selectbox(key='health_measure').set_value('OBESITY').run()
+    app.run()
     assert not app.exception and len(calls)==1
     assert any('HRSA designations are unavailable' in i.value for i in app.info)
     assert 'Private diagnostic' not in ' '.join(w.value for w in app.warning)

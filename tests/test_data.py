@@ -53,6 +53,7 @@ def test_app_comparison(monkeypatch):
     app.selectbox(key="health_measure").select("OBESITY").run()
     assert not app.exception
     assert min(app.dataframe[0].value["Estimate (%)"]) == 30
+    app.selectbox(key="view_selector").select("compare").run()
     app.multiselect[0].set_value([]).run()
     assert not app.exception
-    assert any("Select at least" in item.value for item in app.info)
+    assert any("Choose counties above" in item.value for item in app.info)

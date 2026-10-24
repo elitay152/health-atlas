@@ -136,5 +136,5 @@ def test_washington_opt_in_filters_details_and_failure_retention(tmp_path, monke
     # With no saved HRSA file, the health view and source controls remain usable.
     path.unlink()
     app.run()
-    assert not app.exception and app.selectbox(key='health_measure').value == 'DIABETES'
+    assert not app.exception and not any(s.key=='health_measure' for s in app.selectbox)
     assert any('HRSA designations are unavailable' in i.value for i in app.info)
