@@ -48,6 +48,6 @@ uv run python -m oregon_health.hrsa --region WA
 uv run streamlit run app.py
 ```
 
-CI fixtures are synthetic, small and secret-free. They cover six-layer state filters, cross-state membership, missing geometry, isolated caches, legacy migration, disk failures, refresh outcomes and retained/unavailable-source views. Browser checks exercise all disciplines/categories and CSVs on desktop, category switching and accessible details on mobile, point picking, map rendering and no horizontal overflow. Full pytest and Bandit are required before merge. Tracts and whole-county service-area workflows remain Oregon-only; this is not nationwide coverage.
+CI fixtures are synthetic, small and secret-free. They cover six-layer state filters, cross-state membership, missing geometry, isolated caches, legacy migration, disk failures, refresh outcomes and retained/unavailable-source views. Browser checks exercise all disciplines/categories and CSVs on desktop, category switching and accessible details on mobile, point picking, map rendering and no horizontal overflow. Full pytest and Bandit are required before merge. Washington now supports [whole-county area definitions](washington-service-areas.md); tracts, area summaries and area comparisons remain Oregon-only; this is not nationwide coverage.
 
 ![Washington shortage designations](images/washington-shortage-designations.png)

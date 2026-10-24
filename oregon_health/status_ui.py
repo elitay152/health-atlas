@@ -76,4 +76,4 @@ def render_data_status(path, year, dataset, demo=False, *, region=OREGON):
         if region == OREGON:
             render_access_quality(Path(path).parent, demo)
         else:
-            st.caption("Washington CMS listing and address-match coverage are reported in the hospital directory; HRSA coverage is reported in the shortage-designation view. Tract and service-area workflows remain Oregon-only.")
+            st.caption("Washington CMS listing and address-match coverage are reported in the hospital directory; HRSA coverage is reported in the shortage-designation view. Tract, service-area summary and area-comparison workflows remain Oregon-only.")
