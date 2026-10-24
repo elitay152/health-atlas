@@ -21,7 +21,7 @@ from oregon_health.hrsa_ui import render_hrsa
 from oregon_health.tract_ui import render_tracts
 from oregon_health.interpretation import render_interpretation
 from oregon_health.service_area_ui import render_service_area
-from oregon_health.regions import OREGON, REGIONS, get_region, health_path
+from oregon_health.regions import OREGON, REGIONS, get_region, health_path, check_identity
 
 def open_map_profile():
     fips = selected_county(st.session_state.get("county_map", {}), requested_region)
@@ -94,24 +94,36 @@ with st.sidebar.expander("Source & refresh"):
     st.caption("The site maintainer chooses the CDC release. The downloaded release title appears below the chart.")
     refresh_clicked = st.button("Refresh data", disabled=use_demo)
     st.caption("Cached for 24 hours. Shared refresh limit: once every five minutes.")
-if not use_demo:
+health_cache_unreadable = False
+if not use_demo and DB_PATH.exists():
+    try:
+        with duckdb.connect(str(DB_PATH), read_only=True) as cached:
+            check_identity(cached, requested_region)
+            cached.execute("SELECT fips, county, measure, year, prevalence, low, high FROM estimates LIMIT 0")
+            cached.execute("SELECT source, imported_at FROM provenance").fetchone()
+    except (duckdb.Error, ValueError, OSError):
+        health_cache_unreadable = True
+        logging.getLogger(__name__).warning("County snapshot could not be read", exc_info=True)
+        st.error("The saved county health snapshot could not be read. Ask the maintainer to repair or replace it. Independent data panels remain available.")
+
+if not use_demo and not health_cache_unreadable:
     # One automatic attempt per source per session prevents retrying on every
     # widget interaction if CDC is unavailable. The button always retries.
     attempt_key = f"cdc_attempt:{requested_region.abbr}:{dataset}"
-    if refresh_clicked or (not st.session_state.get(attempt_key) and needs_refresh(dataset, **health_options)):
-        st.session_state[attempt_key] = True
-        try:
+    try:
+        if refresh_clicked or (not st.session_state.get(attempt_key) and needs_refresh(dataset, **health_options)):
+            st.session_state[attempt_key] = True
             with st.spinner(f"Fetching {requested_region.name} estimates from CDC…"):
                 count = refresh(dataset, **health_options)
             st.session_state.pop(attempt_key, None)
             st.success(f"Downloaded {count} {requested_region.name} estimates from CDC.")
-        except RefreshLimited as exc:
-            st.info(str(exc))
-        except (requests.RequestException, ValueError, KeyError, TypeError, OSError, duckdb.Error):
-            logging.getLogger(__name__).exception("CDC refresh failed")
-            st.error("Could not refresh CDC data. Please try again later. Technical details are available in the server logs.")
-            if DB_PATH.exists():
-                st.warning("Showing previously downloaded data. Check its source and import date below; it may be older or from another release.")
+    except RefreshLimited as exc:
+        st.info(str(exc))
+    except (requests.RequestException, ValueError, KeyError, TypeError, OSError, duckdb.Error):
+        logging.getLogger(__name__).exception("CDC refresh failed")
+        st.error("Could not refresh CDC data. Please try again later. Technical details are available in the server logs.")
+        if DB_PATH.exists():
+            st.warning("Showing previously downloaded data. Check its source and import date below; it may be older or from another release.")
 
 if use_demo:
     st.warning("DEMO — synthetic values for three counties. These are not CDC estimates and must not be used for health decisions.")
@@ -121,7 +133,7 @@ if use_demo:
     path = demo_path
 else:
     path = DB_PATH
-    if not path.exists():
+    if not path.exists() or health_cache_unreadable:
         area_view = render_service_area(health_path=DB_PATH, **region_options)
         empty_view = ({} if requested_region == OREGON else {'state': requested_region.abbr}) | area_view
         if dict(st.query_params) != empty_view:
@@ -129,7 +141,9 @@ else:
         render_hospitals(context_available=False, **region_options)
         render_hrsa(**region_options)
         render_data_status(DB_PATH, None, dataset, **region_options)
-        st.info("No CDC data has been downloaded yet. Try Refresh data after five minutes, or ask the maintainer to check the data source." + (" You can also enable the clearly labeled synthetic demo." if requested_region == OREGON else ""))
+        unavailable_message = ("The saved county snapshot needs maintainer review." if health_cache_unreadable else
+                               "No CDC data has been downloaded yet. Try Refresh data after five minutes, or ask the maintainer to check the data source.")
+        st.info(unavailable_message + (" You can also enable the clearly labeled synthetic demo." if requested_region == OREGON else ""))
         st.stop()
 
 with duckdb.connect(str(path), read_only=True) as db:

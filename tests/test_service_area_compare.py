@@ -118,3 +118,13 @@ def test_invalid_links_and_demo(tmp_path,monkeypatch):
     demo=app(tmp_path,monkeypatch,params|dict(demo='1'))
     assert not demo.exception
     assert 'area_compare' not in demo.query_params and 'area_b' not in demo.query_params
+
+
+@pytest.mark.parametrize('requested', ['²²²²', '9999', '-123', '2023.0', '２０２３'])
+def test_malformed_area_year_links_fall_back_safely(tmp_path, monkeypatch, requested):
+    params = service_areas.link_params(['41039']) | dict(area_compare='1', area_b_year=requested)
+    v = app(tmp_path, monkeypatch, params)
+    assert not v.exception
+    assert v.selectbox(key='area_b_year').value == 2023
+    assert v.query_params['area_b_year'] == '2023'
+    assert any('year is unsupported' in warning.value for warning in v.warning)

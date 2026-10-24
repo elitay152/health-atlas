@@ -130,3 +130,41 @@ def test_simultaneous_refresh_reservations_allow_only_one(tmp_path):
             return False
     with ThreadPoolExecutor(max_workers=8) as workers:
         assert sum(workers.map(reserve, range(8))) == 1
+
+
+@pytest.mark.parametrize('state', ['OR', 'WA'])
+@pytest.mark.parametrize('damage', ['corrupt', 'schema', 'foreign'])
+def test_unreadable_county_cache_keeps_independent_panels(tmp_path, monkeypatch, state, damage):
+    from oregon_health.regions import get_region, health_path
+    base = tmp_path / 'oregon.duckdb'
+    path = health_path(get_region(state), tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if damage == 'corrupt':
+        path.write_bytes(b'Not a DuckDB snapshot')
+    elif damage == 'schema':
+        with duckdb.connect(str(path)) as db:
+            db.execute('CREATE TABLE unrelated (value INTEGER)')
+    else:
+        foreign = get_region('WA' if state == 'OR' else 'OR')
+        rows = [dict(stateabbr=foreign.abbr, locationid=next(iter(foreign.counties())),
+                     locationname='Synthetic', measureid='DIABETES', year='2023',
+                     data_value_type='Crude prevalence', data_value=10,
+                     low_confidence_limit=9, high_confidence_limit=11)]
+        data.store(rows, SOURCE, path, region=foreign)
+    before = path.read_bytes()
+    monkeypatch.setattr(data, 'DB_PATH', base)
+    def forbidden(*args, **kwargs):
+        pytest.fail('Unreadable/foreign county caches must not trigger source requests')
+    monkeypatch.setattr(api_cache, 'refresh', forbidden)
+    monkeypatch.setattr(requests, 'get', forbidden)
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / 'app.py', default_timeout=20)
+    app.query_params['state'] = state
+    app.run()
+    assert not app.exception
+    assert any('snapshot could not be read' in error.value for error in app.error)
+    assert app.checkbox(key='show_hospitals')
+    assert app.checkbox(key='show_hrsa')
+    assert app.multiselect(key='area_counties')
+    assert not any(box.key == 'health_measure' for box in app.selectbox)
+    app.run()
+    assert not app.exception and path.read_bytes() == before
