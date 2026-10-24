@@ -4,6 +4,7 @@ from copy import deepcopy
 import pydeck as pdk
 import streamlit as st
 
+from oregon_health.regions import OREGON, get_region
 from oregon_health import service_areas
 from oregon_health.map import boundaries
 from oregon_health.profile import county_names
@@ -20,8 +21,9 @@ def _clear():
     _activate()
 
 
-def area_deck(codes):
-    collection = deepcopy(boundaries())
+def area_deck(codes, *, region=OREGON):
+    region = get_region(region)
+    collection = deepcopy(boundaries(region))
     for f in collection['features']:
         p = f['properties']
         selected = p['fips'] in codes
@@ -31,21 +33,23 @@ def area_deck(codes):
     return pdk.Deck(layers=[pdk.Layer('GeoJsonLayer',collection,id='service-area-counties',
         pickable=True,get_fill_color='properties.color',get_line_color='properties.outline',
         line_width_min_pixels=1)],map_provider=None,map_style='__MAP_STYLE__',
-        initial_view_state=pdk.ViewState(latitude=44.15,longitude=-120.55,zoom=4.7,min_zoom=4,max_zoom=8),
+        initial_view_state=pdk.ViewState(latitude=region.center[1],longitude=region.center[0],zoom=region.zoom - 0.1,min_zoom=4,max_zoom=8),
         tooltip={'text':'{name} County · {fips}\n{membership}'})
 
 
-def render_service_area(demo=False, *, health_path=None, year=2023):
+def render_service_area(demo=False, *, health_path=None, year=2023, region=OREGON):
+    region = get_region(region)
+    region.require("service_areas")
     st.divider()
     st.subheader('Define a service area',anchor='service-area')
-    st.caption('Choose whole Oregon counties. This is an area you define, not a measured patient catchment or travel-time zone.')
+    st.caption(f'Choose whole {region.name} counties. This is an area you define, not a measured patient catchment or travel-time zone.')
     if demo:
         st.info('Service-area definitions are available in real-data mode, separate from synthetic health comparisons.')
         return {}
-    names = county_names()
+    names = county_names(region)
     if 'area_counties' not in st.session_state:
         try:
-            linked = service_areas.parse_link(st.query_params.get('area'),st.query_params.get('area_rev'))
+            linked = service_areas.parse_link(st.query_params.get('area'),st.query_params.get('area_rev'), region=region)
             st.session_state['area_counties'] = linked or []
             st.session_state['area_active'] = linked is not None
         except ValueError:
@@ -58,7 +62,7 @@ def render_service_area(demo=False, *, health_path=None, year=2023):
                                   help='Loads only a current Health Atlas whole-county definition, up to 250 KB. No addresses are needed.')
         if st.button('Load saved area',disabled=upload is None,key='area_load'):
             try:
-                st.session_state['area_counties'] = service_areas.loads(upload.getvalue())
+                st.session_state['area_counties'] = service_areas.loads(upload.getvalue(), region=region)
                 _activate()
                 st.success('Saved county selection loaded.')
             except ValueError:
@@ -69,12 +73,12 @@ def render_service_area(demo=False, *, health_path=None, year=2023):
     st.write(f'**{len(codes)} whole counties selected**')
     if not codes:
         st.info('The area is empty. Select counties above; empty definitions can also be saved and shared.')
-    st.pydeck_chart(area_deck(codes),height=380,key='service_area_map',
-        alt='Oregon county membership preview. Teal and copper identify included counties; use the Counties in the service area selector to change membership.')
+    st.pydeck_chart(area_deck(codes, region=region),height=380,key='service_area_map',
+        alt=f'{region.name} county membership preview. Teal and copper identify included counties; use the Counties in the service area selector to change membership.')
     st.caption('Teal fill / copper outline: included whole counties · Gray: excluded. This map shows membership, not prevalence, supply or eligibility.')
     st.caption('Boundaries: pinned Plotly county dataset · Boundary vintage unverified · Generalized display polygons.')
-    st.download_button('Download area definition (GeoJSON)',service_areas.dumps(codes),
-        'health-atlas-service-area.geojson','application/geo+json',on_click='ignore')
+    st.download_button('Download area definition (GeoJSON)',service_areas.dumps(codes, region=region),
+        'health-atlas-service-area.geojson' if region == OREGON else f'health-atlas-{region.name.lower()}-service-area.geojson','application/geo+json',on_click='ignore')
     st.caption('Copy the browser address to share membership pinned to this boundary revision. The downloaded definition also embeds the selected display polygons and source metadata. It does not save health estimates.')
     with st.expander('Inclusion rules & boundary limits'):
         st.write('Each selected county is included once in full, even if its health data is unavailable. Duplicates are removed. Disconnected county sets are allowed. Comparison counties and the county spotlight do not change this area.')
@@ -82,10 +86,13 @@ def render_service_area(demo=False, *, health_path=None, year=2023):
         st.write('These generalized display polygons come from the pinned Plotly county dataset under MIT terms. Their boundary vintage is unverified. A revised bundle requires review and redefinition; links and imported files do not silently switch boundaries. No area/perimeter, point-in-polygon eligibility or travel-time analysis is performed.')
         st.caption('No patient/client addresses, uploaded address lists, geocoding or drive-time service are used. This definition starts with county IDs; tract-based analytical areas require separately suitable geography.')
         st.link_button('Boundary source & MIT attribution',service_areas.SOURCE)
-    render_summary(codes,year,health_path)
-    compared=render_comparison(codes,year,health_path)
-    params=service_areas.link_params(codes) if st.session_state.get('area_active') else {}
+    if 'service_area_summary' in region.supported_sources:
+        render_summary(codes,year,health_path)
+    else:
+        st.info('Washington area definitions can be saved and shared. Area summaries and area comparisons are currently available for Oregon only.')
+    compared = render_comparison(codes,year,health_path) if 'service_area_compare' in region.supported_sources else {}
+    params=service_areas.link_params(codes, region=region) if st.session_state.get('area_active') else {}
     # Include an explicit empty A when sharing an unfinished comparison.
     if compared:
-        params=service_areas.link_params(codes)
+        params=service_areas.link_params(codes, region=region)
     return params | compared

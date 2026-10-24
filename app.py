@@ -62,7 +62,7 @@ if st.session_state.get("_active_region") != requested_region.abbr:
 st.caption(f"{requested_region.name.upper()} / COMMUNITY HEALTH")
 st.title("Health Atlas")
 st.write("Explore a county. Build a comparison. Share what you find.")
-nav = "[Map](#county-map) · [County profile](#county-profile) · [Comparison](#county-comparison) · [Hospitals](#hospital-directory) · [Shortage designations](#shortage-designations) · [Data status](#data-status)"
+nav = "[Map](#county-map) · [County profile](#county-profile) · [Comparison](#county-comparison) · [Service area](#service-area) · [Hospitals](#hospital-directory) · [Shortage designations](#shortage-designations) · [Data status](#data-status)"
 if requested_region == OREGON:
     nav = "[Map](#county-map) · [County profile](#county-profile) · [Tracts](#tract-explorer) · [Comparison](#county-comparison) · [Service area](#service-area) · [Hospitals](#hospital-directory) · [Shortage designations](#shortage-designations) · [Data status](#data-status)"
 st.markdown(nav)
@@ -76,9 +76,9 @@ st.sidebar.selectbox("State", [r.abbr for r in REGIONS.values() if r.deployed],
 region_options = {} if requested_region == OREGON else {"region": requested_region}
 if requested_region != OREGON:
     DB_PATH = health_path(requested_region, DB_PATH.parent)
-    st.info("Washington coverage: county health estimates, Census demographics and CMS hospital listings. Optional approximate hospital locations and HRSA shortage designations are available. Tracts and service areas are currently available for Oregon only.")
-    if any(key in st.query_params for key in ("local", "tract", "tract_year", "area", "area_compare", "area_b")):
-        st.warning("Oregon-only tract and service-area settings were omitted from this Washington view.")
+    st.info("Washington coverage: county health estimates, Census demographics and CMS hospital listings. Optional approximate hospital locations and HRSA shortage designations are available. Whole-county service-area definitions are available. Tracts, area summaries and area comparisons are currently available for Oregon only.")
+    if any(key in st.query_params for key in ("local", "tract", "tract_year", "area_compare", "area_b", "area_b_rev", "area_b_year")):
+        st.warning("Oregon-only tract and area-comparison settings were omitted from this Washington view.")
 health_options = {} if requested_region == OREGON else {"path": DB_PATH, **region_options}
 census_options = {} if requested_region == OREGON else {"cache_dir": DB_PATH.parent, **region_options}
 st.sidebar.header("Data settings")
@@ -122,10 +122,10 @@ if use_demo:
 else:
     path = DB_PATH
     if not path.exists():
-        if requested_region == OREGON:
-            area_view = render_service_area(health_path=DB_PATH)
-            if dict(st.query_params) != area_view:
-                st.query_params.from_dict(area_view)
+        area_view = render_service_area(health_path=DB_PATH, **region_options)
+        empty_view = ({} if requested_region == OREGON else {'state': requested_region.abbr}) | area_view
+        if dict(st.query_params) != empty_view:
+            st.query_params.from_dict(empty_view)
         render_hospitals(context_available=False, **region_options)
         render_hrsa(**region_options)
         render_data_status(DB_PATH, None, dataset, **region_options)
@@ -329,7 +329,7 @@ with duckdb.connect(str(path), read_only=True) as db:
     selected_fips = dict(zip(frame.county, frame.fips))
     shared_view = link_params([selected_fips[name] for name in selected], year, measure, use_demo, include_census, fips, **local_view, **region_options)
     st.markdown("[Back to map ↑](#county-map) · [Data status & sources](#data-status)")
-area_view = render_service_area(use_demo, health_path=path, year=year) if requested_region == OREGON else {}
+area_view = render_service_area(use_demo, health_path=path, year=year, **region_options)
 shared_view.update(area_view)
 if dict(st.query_params) != shared_view:
     st.query_params.from_dict(shared_view)
