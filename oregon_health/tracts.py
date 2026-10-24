@@ -10,7 +10,6 @@ import math
 import os
 from pathlib import Path
 import re
-import tempfile
 import time
 
 import duckdb
@@ -21,6 +20,8 @@ from oregon_health.api_cache import _reserve_refresh
 from oregon_health.data import DB_PATH as COUNTY_PATH, MEASURES
 from oregon_health.profile import county_names
 from oregon_health.status import record_refresh
+from oregon_health.regions import OREGON, get_region, cache_dir, health_path
+from oregon_health.storage import snapshot
 
 DATASET = 'cwsq-ngmh'
 RELEASE_YEAR = 2025
@@ -85,10 +86,12 @@ def _metadata():
     return meta
 
 
-def fetch():
+def fetch(*,region=OREGON):
+    region=get_region(region)
+    region.require("tract_health")
     meta = _metadata()
     codes = ','.join(f"'{code}'" for code in MEASURES)
-    where = f"stateabbr='OR' AND measureid in ({codes})"
+    where = f"stateabbr='{region.abbr}' AND measureid in ({codes})"
     counts, size = _get(RESOURCE_URL, {'$select': 'count(*) as rows', '$where': where})
     if (not isinstance(counts, list) or len(counts) != 1 or not isinstance(counts[0], dict)
             or not re.fullmatch(r'[0-9]+', str(counts[0].get('rows', '')))):
@@ -112,8 +115,8 @@ def fetch():
             break
     if len(rows) != expected or _metadata()['rowsUpdatedAt'] != meta['rowsUpdatedAt']:
         raise ValueError('CDC response incomplete or source changed during pagination')
-    normalize(rows)
-    return rows, dict(dataset=DATASET, release_year=RELEASE_YEAR, source_url=f'{BASE}/d/{DATASET}',
+    normalize(rows,region=region)
+    return rows, dict(state=region.abbr,state_fips=region.state_fips,dataset=DATASET, release_year=RELEASE_YEAR, source_url=f'{BASE}/d/{DATASET}',
                       metadata_url=METADATA_URL, title=meta['name'],
                       source_rows_updated_at=meta['rowsUpdatedAt'],
                       fetched_at=datetime.now(timezone.utc).isoformat(),
@@ -144,7 +147,9 @@ def _number(value, integer=False):
     return int(number) if integer else number
 
 
-def normalize(rows):
+def normalize(rows,*,region=OREGON):
+    region=get_region(region)
+    names=county_names(region)
     if not isinstance(rows, list) or not 0 < len(rows) <= MAX_ROWS:
         raise ValueError('Invalid CDC tract row collection')
     records, seen = [], set()
@@ -153,9 +158,9 @@ def normalize(rows):
             raise ValueError('Invalid CDC tract record')
         tract = _text(row, 'locationid', True)
         county = _text(row, 'countyfips', True)
-        if (not re.fullmatch(r'41[0-9]{9}', tract) or county not in county_names()
-                or tract[:5] != county or row.get('stateabbr') != 'OR'):
-            raise ValueError('Invalid Oregon tract/county identifier')
+        if (not re.fullmatch(region.state_fips+r'[0-9]{9}', tract) or county not in names
+                or tract[:5] != county or row.get('stateabbr') != region.abbr):
+            raise ValueError(f'Invalid {region.name} tract/county identifier')
         measure = row.get('measureid')
         if (measure not in MEASURES or row.get('data_value_type') != 'Crude prevalence'
                 or row.get('data_value_unit') != '%'):
@@ -188,24 +193,39 @@ def normalize(rows):
     return records
 
 
-def store(rows, provenance, path=DB_PATH):
-    records = normalize(rows)
+def tract_path(region=OREGON):
+    region=get_region(region)
+    return DB_PATH if region==OREGON else cache_dir(region,DB_PATH.parent)/'tracts.duckdb'
+
+
+def check_region(db,region=OREGON):
+    region=get_region(region)
+    p=json.loads(db.execute('SELECT payload FROM tract_provenance').fetchone()[0])
+    if p.get('state_fips','41')!=region.state_fips or p.get('state',region.abbr)!=region.abbr:
+        raise ValueError('Tract snapshot belongs to another region')
+    return p
+
+
+def store(rows, provenance, path=None,*,region=OREGON):
+    region=get_region(region)
+    region.require('tract_health')
+    records=normalize(rows,region=region)
     if (provenance['dataset'] != DATASET or provenance['release_year'] != RELEASE_YEAR
-            or provenance['rows'] != len(records) or provenance['catalog'] != list(MEASURES)):
+            or provenance['rows'] != len(records) or provenance['catalog'] != list(MEASURES)
+            or provenance.get('state_fips',region.state_fips)!=region.state_fips
+            or provenance.get('state',region.abbr)!=region.abbr):
         raise ValueError('Tract provenance does not match records')
     fetched = datetime.fromisoformat(provenance['fetched_at'])
     if fetched.tzinfo is None:
         raise ValueError('Tract fetch time must include timezone')
-    payload = json.dumps(provenance, allow_nan=False)
-    path = Path(path)
-    if path.resolve() == COUNTY_PATH.resolve():
+    payload=json.dumps(dict(provenance,state=region.abbr,state_fips=region.state_fips),allow_nan=False)
+    path=Path(path if path is not None else tract_path(region))
+    if path.resolve() in {COUNTY_PATH.resolve(),health_path(region,COUNTY_PATH.parent).resolve()}:
         raise ValueError('Tract snapshots cannot replace the county database')
-    path.parent.mkdir(parents=True, exist_ok=True)
-    handle, filename = tempfile.mkstemp(dir=path.parent, suffix='.duckdb')
-    os.close(handle)
-    temp = Path(filename)
-    temp.unlink()
-    try:
+    def validate(previous):
+        with duckdb.connect(str(previous),read_only=True) as db:
+            check_region(db,region)
+    with snapshot(path,validate) as temp:
         with duckdb.connect(str(temp)) as db:
             db.execute('''CREATE TABLE tract_estimates (
                 tract_fips VARCHAR, county_fips VARCHAR, county VARCHAR, tract VARCHAR,
@@ -219,27 +239,29 @@ def store(rows, provenance, path=DB_PATH):
                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', records)
             db.execute('CREATE TABLE tract_provenance (payload VARCHAR)')
             db.execute('INSERT INTO tract_provenance VALUES (?)', [payload])
-        os.replace(temp, path)
-    finally:
-        temp.unlink(missing_ok=True)
     return len(records)
 
 
-def estimates(county_fips, measure, year, path=DB_PATH):
+def estimates(county_fips, measure, year, path=None,*,region=OREGON):
     """Read one county's saved tract rows, including unavailable estimates."""
-    if county_fips not in county_names() or measure not in MEASURES:
-        raise ValueError('Unknown Oregon county or measure')
+    region=get_region(region)
+    path=path if path is not None else tract_path(region)
+    if county_fips not in county_names(region) or measure not in MEASURES:
+        raise ValueError(f'Unknown {region.name} county or measure')
     with duckdb.connect(str(path), read_only=True) as db:
+        check_region(db,region)
         cursor = db.execute('''SELECT * FROM tract_estimates
             WHERE county_fips = ? AND measure = ? AND year = ? ORDER BY tract_fips''',
                             [county_fips, measure, year])
         return [dict(zip(COLUMNS, row)) for row in cursor.fetchall()]
 
 
-def coverage(path=DB_PATH):
+def coverage(path=None,*,region=OREGON):
     """Read-only counts are saved estimates, not population or boundary coverage."""
+    region=get_region(region)
+    path=path if path is not None else tract_path(region)
     with duckdb.connect(str(path), read_only=True) as db:
-        provenance = json.loads(db.execute('SELECT payload FROM tract_provenance').fetchone()[0])
+        provenance=check_region(db,region)
         cursor = db.execute('''SELECT county_fips, measure, year, count(*) AS rows,
             count(DISTINCT tract_fips) AS tracts, count(prevalence) AS available,
             count(*) FILTER (WHERE prevalence IS NULL) AS unavailable,
@@ -251,21 +273,29 @@ def coverage(path=DB_PATH):
     return dict(provenance=provenance, coverage=counts)
 
 
-def needs_refresh(path=DB_PATH):
+def needs_refresh(path=None,*,region=OREGON):
+    region=get_region(region)
+    path=path if path is not None else tract_path(region)
     if not Path(path).exists():
         return True
-    provenance = coverage(path)['provenance']
+    provenance = coverage(path,region=region)['provenance']
     return (provenance['catalog'] != list(MEASURES) or provenance['dataset'] != DATASET
             or datetime.now(timezone.utc) - datetime.fromisoformat(provenance['fetched_at']) >= CACHE_TTL)
 
 
-def refresh(path=DB_PATH, force=False):
-    if not force and not needs_refresh(path):
-        return coverage(path)['provenance']['rows']
+def refresh(path=None, force=False,*,region=OREGON):
+    region=get_region(region)
+    region.require('tract_health')
+    path=path if path is not None else tract_path(region)
+    if Path(path).exists():
+        with duckdb.connect(str(path),read_only=True) as db:
+            check_region(db,region)
+    if not force and not needs_refresh(path,region=region):
+        return coverage(path,region=region)['provenance']['rows']
     _reserve_refresh(path)
     try:
-        rows, provenance = fetch()
-        count = store(rows, provenance, path)
+        rows, provenance = fetch() if region==OREGON else fetch(region=region)
+        count = store(rows, provenance, path,region=region)
     except Exception:
         record_refresh(path, DATASET, 'failed')
         raise
@@ -275,12 +305,13 @@ def refresh(path=DB_PATH, force=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--path', type=Path, default=DB_PATH)
+    parser.add_argument('--path', type=Path)
+    parser.add_argument('--region', choices=['OR','WA'], default='OR')
     parser.add_argument('--refresh', action='store_true')
     args = parser.parse_args()
     try:
-        refresh(args.path, force=args.refresh)
-        report = coverage(args.path)
+        refresh(args.path, force=args.refresh,region=args.region)
+        report = coverage(args.path,region=args.region)
     except (requests.RequestException, ValueError, KeyError, TypeError, OSError, duckdb.Error):
         parser.exit(1, 'CDC tract refresh failed; any previous snapshot was retained. Check source access/schema or retry later.\n')
     print(json.dumps(report, indent=2))

@@ -57,8 +57,6 @@ st.caption(f'HEALTH ATLAS / {region.name.upper()} / COMMUNITY HEALTH' + (' / SYN
 st.title(navigation.VIEWS[view])
 if invalid_view:
     st.warning('That view is not supported. Showing Explore counties.')
-if region != OREGON and any(k in st.query_params for k in ('local', 'tract', 'tract_year')):
-    st.warning('Oregon-only tract settings were omitted from this Washington view.')
 
 region_options = {} if region == OREGON else {'region': region}
 if region != OREGON:

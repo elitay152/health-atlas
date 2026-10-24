@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 
 from oregon_health.profile import county_names
+from oregon_health.regions import OREGON, get_region
 
 ASSETS = Path(__file__).resolve().parents[1] / 'assets'
 BOUNDARIES = ASSETS / 'oregon-tracts-2023.geojson'
@@ -15,15 +16,18 @@ MANIFEST = ASSETS / 'oregon-tracts-2023.provenance.json'
 BOUNDARY_YEAR = 2023
 
 
-def _geoid(value, county=None):
-    if (not isinstance(value, str) or not re.fullmatch(r'41[0-9]{9}', value)
-            or value[:5] not in county_names() or (county is not None and value[:5] != county)):
-        raise ValueError('Invalid Oregon tract GEOID/county prefix')
+def _geoid(value, county=None,*,region=OREGON):
+    region=get_region(region)
+    if (not isinstance(value, str) or not re.fullmatch(region.state_fips+r'[0-9]{9}', value)
+            or value[:5] not in county_names(region) or (county is not None and value[:5] != county)):
+        raise ValueError(f'Invalid {region.name} tract GEOID/county prefix')
     return value
 
 
-def validate(collection):
+def validate(collection,*,region=OREGON):
     """Validate IDs and Polygon/MultiPolygon rings without substituting geometry."""
+    region=get_region(region)
+    west,south,east,north=region.bounds
     if not isinstance(collection, dict) or collection.get('type') != 'FeatureCollection':
         raise ValueError('Expected a tract FeatureCollection')
     features = collection.get('features')
@@ -34,9 +38,9 @@ def validate(collection):
         if not isinstance(feature, dict) or feature.get('type') != 'Feature':
             raise ValueError('Invalid tract feature')
         props = feature.get('properties')
-        if not isinstance(props, dict) or props.get('county_fips') not in county_names():
+        if not isinstance(props, dict) or props.get('county_fips') not in county_names(region):
             raise ValueError('Invalid tract county')
-        geoid = _geoid(props.get('geoid'), props['county_fips'])
+        geoid = _geoid(props.get('geoid'), props['county_fips'],region=region)
         if feature.get('id') != geoid or geoid in seen:
             raise ValueError('Duplicate or inconsistent tract feature ID')
         seen.add(geoid)
@@ -58,56 +62,62 @@ def validate(collection):
                 for point in ring:
                     if (not isinstance(point, list) or len(point) != 2
                             or any(isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) for x in point)
-                            or not (-125 <= point[0] <= -116 and 41 <= point[1] <= 47)):
-                        raise ValueError('Invalid Oregon longitude/latitude')
+                            or not (west <= point[0] <= east and south <= point[1] <= north)):
+                        raise ValueError(f'Invalid {region.name} longitude/latitude')
                 area = sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(ring, ring[1:]))
                 if area == 0:
                     raise ValueError('Degenerate tract ring')
     return collection
 
 
-@lru_cache(maxsize=1)
-def _load():
-    raw = BOUNDARIES.read_bytes()
-    provenance = json.loads(MANIFEST.read_text())
-    if (provenance['boundary_year'] != BOUNDARY_YEAR or provenance['output_crs'] != 'EPSG:4326'
+@lru_cache(maxsize=2)
+def _load(code='OR'):
+    region=get_region(code)
+    boundary=BOUNDARIES if region==OREGON else ASSETS/'washington-tracts-2023.geojson'
+    manifest=MANIFEST if region==OREGON else ASSETS/'washington-tracts-2023.provenance.json'
+    raw = boundary.read_bytes()
+    provenance = json.loads(manifest.read_text())
+    if (provenance.get('state_fips','41')!=region.state_fips or provenance['boundary_year'] != BOUNDARY_YEAR or provenance['output_crs'] != 'EPSG:4326'
             or hashlib.sha256(raw).hexdigest() != provenance['geojson_sha256']):
         raise ValueError('Tract geometry does not match its provenance')
-    collection = validate(json.loads(raw))
+    collection = validate(json.loads(raw),region=region)
     if len(collection['features']) != provenance['features']:
         raise ValueError('Tract feature count differs from provenance')
     return collection, provenance
 
 
-def boundaries(county_fips=None):
+def boundaries(county_fips=None,*,region=OREGON):
     """Fresh, independently mutable polygons; no fetch or filesystem writes."""
-    if county_fips is not None and county_fips not in county_names():
-        raise ValueError('Unknown Oregon county')
-    collection = deepcopy(_load()[0])
+    region=get_region(region)
+    if county_fips is not None and county_fips not in county_names(region):
+        raise ValueError(f'Unknown {region.name} county')
+    collection = deepcopy((_load() if region==OREGON else _load(region.abbr))[0])
     if county_fips is not None:
         collection['features'] = [f for f in collection['features'] if f['properties']['county_fips'] == county_fips]
     return collection
 
 
-def provenance():
-    return deepcopy(_load()[1])
+def provenance(*,region=OREGON):
+    region=get_region(region)
+    return deepcopy((_load() if region==OREGON else _load(region.abbr))[1])
 
 
-def join_estimates(rows, county_fips=None, *, estimate_boundary_year=2023, previous=None):
+def join_estimates(rows, county_fips=None, *, estimate_boundary_year=2023, previous=None,region=OREGON):
     """Join one measure/year's rows by GEOID; leave absent/null estimates explicit.
 
     `previous` is an optional prior FeatureCollection. Geometry differences are
     coordinate differences, not a certified geographic crosswalk. Missing IDs
     never inherit estimates from names, points, ZIP codes or another vintage.
     """
+    region=get_region(region)
     if estimate_boundary_year != BOUNDARY_YEAR:
         raise ValueError('Estimate and boundary vintages require an explicit compatible crosswalk')
-    collection = boundaries(county_fips)
+    collection = boundaries(county_fips,region=region)
     estimates = {}
     periods = set()
     for row in rows:
-        geoid = _geoid(row.get('tract_fips'), row.get('county_fips'))
-        if row.get('county_fips') not in county_names():
+        geoid = _geoid(row.get('tract_fips'), row.get('county_fips'),region=region)
+        if row.get('county_fips') not in county_names(region):
             raise ValueError('Missing estimate county prefix')
         if county_fips is not None and row['county_fips'] != county_fips:
             continue
@@ -138,7 +148,7 @@ def join_estimates(rows, county_fips=None, *, estimate_boundary_year=2023, previ
         props.update(prevalence=value, low=low, high=high, estimate_status=status)
     changes = None
     if previous is not None:
-        prior = validate(previous)
+        prior = validate(previous,region=region)
         old = {f['id']: f['geometry'] for f in prior['features']
                if county_fips is None or f['properties']['county_fips'] == county_fips}
         current = {f['id']: f['geometry'] for f in collection['features']}

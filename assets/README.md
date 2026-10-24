@@ -45,3 +45,29 @@ https://github.com/plotly/datasets/blob/0c447c47b757ad74edecab31f0d72f849d2e67c2
 The MIT notice in `BOUNDARIES-LICENSE.txt` applies. The transformation retains IDs beginning with `53`, reduces properties to `fips` and `name` (source `NAME`), sorts features by ID and writes compact JSON plus a trailing newline. Coordinates are unchanged longitude/latitude; no reprojection or additional simplification was performed. Boundary vintage remains **unverified**; these generalized display polygons are not a precise spatial eligibility or cadastral source.
 
 Artifact: **54,680 bytes**, SHA-256 `bcfe4e9b41f56419ece9807ce16ee5aac651ed293e72cc53105ef9102ca6e2fc`. Region validation checks unique five-digit IDs, the state prefix and coordinate bounds. This asset is used by the Washington county-health/ACS explorer. Washington tract, service-area summary and area-comparison workflows remain unsupported; see the [release verification](../docs/region-release-check.md).
+
+## Washington census tracts (2023)
+
+`washington-tracts-2023.geojson` contains **1,772** Census tract polygons from the
+[official 2023 Washington 1:500,000 ZIP](https://www2.census.gov/geo/tiger/GENZ2023/shp/cb_2023_53_tract_500k.zip),
+retrieved October 24, 2026. Source ZIP: **1,388,430 bytes**, SHA-256
+`704608592dda0964bcecd2381752325c9ce18095bc046d2269536fd33d49452f`.
+The transformed GeoJSON is **3,126,882 bytes**, SHA-256
+`8ed90c018c9614abd4810179b1c5d5938e56353cd4958fbfc7b30bd9e8fdf833`.
+The accompanying provenance file records the CRS transformation, ring orientation,
+tool versions and source/derived hashes. Census acknowledgement and the source
+scale/use constraints in `TRACT-BOUNDARIES-NOTICE.txt` apply.
+
+Reproduce with the existing build-only tools:
+
+```sh
+uv run --with pyshp==3.1.4 --with pyproj==3.7.2 python scripts/prepare_tract_boundaries.py /path/to/cb_2023_53_tract_500k.zip --region WA
+```
+
+All **1,770** Washington CDC PLACES tract IDs for the nine supported 2023 conditions
+join these display boundaries. Two boundary tracts lack CDC rows: **53005012000**
+(Benton) and **53021980100** (Franklin). Their absence is unexplained, not evidence
+of zero prevalence or suppression. King has **494/494**, Snohomish **173/173** joins.
+GEOID agreement is not a certified crosswalk or proof of unchanged geometry. These
+polygons are for display only, never eligibility, precise spatial analysis or trends
+across incompatible boundaries.

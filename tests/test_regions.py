@@ -106,8 +106,8 @@ def test_links_coverage_flags_and_live_guard(monkeypatch):
     params=link_params(['53033'],2023,'DIABETES',False,False,'53033',region=WA)
     assert params['state']=='WA' and params['county']=='53033'
     assert 'state' not in link_params(['41051'],2023,'DIABETES',False,False)
-    with pytest.raises(ValueError):WA.require('tract_health')
-    with pytest.raises(ValueError):link_params([],2023,'DIABETES',False,False,local=True,region=WA)
+    WA.require('tract_health')
+    assert link_params([],2023,'DIABETES',False,False,'53033',local=True,region=WA)['local']=='1'
     with pytest.raises(ValueError):regions.get_region('OR\' OR TRUE')
     def forbidden(*a,**kw):pytest.fail('unsupported region must not request Oregon data')
     monkeypatch.setattr(api_cache,'refresh',forbidden)

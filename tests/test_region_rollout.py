@@ -101,18 +101,17 @@ def test_state_views_links_missingness_and_exports(state_caches, region):
 def test_washington_never_renders_oregon_only_sources(state_caches, monkeypatch):
     def forbidden(*args, **kwargs):
         pytest.fail('Washington must not render/query Oregon-only workflows')
-    for module, name in [(tract_ui, 'render_tracts'),
-                         (status_ui, 'render_access_quality')]:
+    for module, name in [(status_ui, 'render_access_quality')]:
         monkeypatch.setattr(module, name, forbidden)
     app = view(regions.WASHINGTON, county='53033', compare='41051,53033', local='1',
                tract='41051000101', area='41051', area_compare='1', area_b='41039', demo='1')
     assert not app.exception
     assert app.toggle(key='demo_mode').disabled and not app.toggle(key='demo_mode').value
     assert app.query_params['compare'] == '53033'
-    assert not any(key in app.query_params for key in ['local', 'tract'])
+    assert 'tract' not in app.query_params  # Oregon GEOID is rejected even though Washington tracts are supported.
     assert app.query_params['area']=='' and app.query_params['area_b']==''
     assert app.query_params['area_compare']=='1'
-    assert any('Oregon-only' in item.value for item in app.warning)
+    assert not any('Oregon-only' in item.value for item in app.warning)
     assert any('No Area B was loaded' in item.value for item in app.warning)
 
 

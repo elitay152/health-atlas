@@ -22,28 +22,29 @@ def parse_counties(value, *, region=OREGON):
     return valid, invalid
 
 
-def parse_tract(value, county):
+def parse_tract(value, county,*,region=OREGON):
+    region=get_region(region)
     if value is None:
         return None, False
-    if (not isinstance(value, str) or not re.fullmatch(r'41[0-9]{9}', value)
-            or county not in county_names() or value[:5] != county):
+    if (not isinstance(value, str) or not re.fullmatch(region.state_fips+r'[0-9]{9}', value)
+            or county not in county_names(region) or value[:5] != county):
         return None, True
     return value, False
 
 
 def link_params(codes, year, measure, demo, census, profile=None, *, local=False, tract=None, tract_year=None, region=OREGON):
     region=get_region(region)
-    if region!=OREGON and (demo or local):
-        raise ValueError("Demo and tract links are not prepared for this region")
+    if region!=OREGON and demo:
+        raise ValueError("Demo links are not prepared for this region")
     params = dict(compare=",".join(codes), year=str(year), measure=measure,
                   demo="1" if demo else "0", census="1" if census and not demo else "0")
     if region!=OREGON:
         params["state"]=region.abbr
     if profile and profile in county_names(region):
         params["county"] = profile
-    if local and not demo and profile in county_names():
+    if local and not demo and profile in county_names(region):
         params['local'] = '1'
-        selected, invalid = parse_tract(tract, profile)
+        selected, invalid = parse_tract(tract, profile,region=region)
         if selected and not invalid:
             params['tract'] = selected
         if isinstance(tract_year, int) and 2000 <= tract_year <= 2100:
