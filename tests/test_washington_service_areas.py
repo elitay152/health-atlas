@@ -6,7 +6,7 @@ import pytest
 import requests
 from streamlit.testing.v1 import AppTest
 
-from oregon_health import api_cache, data, regions, service_areas as areas, service_area_ui
+from oregon_health import api_cache, data, regions, service_areas as areas, service_area_ui, service_area_summary
 from oregon_health.service_area_ui import area_deck
 from test_washington_hospitals import app_with_wa
 
@@ -53,7 +53,7 @@ def test_washington_import_rejects_tampering(change):
 def test_washington_area_links_state_switch_and_source_independence(tmp_path,monkeypatch):
     app,_=app_with_wa(tmp_path,monkeypatch)
     def forbidden(*args,**kwargs):pytest.fail('Washington definitions must not invoke Oregon-only summaries')
-    monkeypatch.setattr(service_area_ui,'render_summary',forbidden)
+    monkeypatch.setattr(service_area_summary,'summarize',forbidden)
     monkeypatch.setattr(service_area_ui,'render_comparison',forbidden)
     monkeypatch.setattr(requests,'get',forbidden)
     monkeypatch.setattr(requests,'post',forbidden)
@@ -61,7 +61,7 @@ def test_washington_area_links_state_switch_and_source_independence(tmp_path,mon
     app.run()
     assert not app.exception and 'area' not in app.query_params
     assert len(app.multiselect(key='area_counties').options)==39
-    assert not any(c.key in {'show_area_summary','area_compare_enabled'} for c in app.checkbox)
+    assert not any(c.key in {'compare_areas','area_compare_enabled'} for c in app.checkbox)
     app.multiselect(key='area_counties').set_value(['53033','53061']).run()
     assert not app.exception
     assert app.query_params['state']=='WA' and app.query_params['area']=='53033,53061'
@@ -78,7 +78,7 @@ def test_washington_area_links_state_switch_and_source_independence(tmp_path,mon
     app.button(key='area_clear').click().run()
     assert app.query_params['area']=='' and app.multiselect(key='area_counties').value==[]
     # Switching regions must clear membership and its revision.
-    monkeypatch.setattr(service_area_ui,'render_summary',lambda *a,**kw:None)
+    monkeypatch.setattr(service_area_summary,'summarize',lambda *a,**kw:None)
     monkeypatch.setattr(service_area_ui,'render_comparison',lambda *a,**kw:{})
     app.selectbox(key='region_selector').set_value('OR').run()
     assert not app.exception and 'state' not in app.query_params
@@ -94,4 +94,4 @@ def test_washington_area_is_available_without_cdc(tmp_path,monkeypatch):
     assert app.query_params['state']=='WA' and app.query_params['area']=='53011,53033'
     assert app.multiselect(key='area_counties').value==['53011','53033']
     assert not any(s.key=='health_measure' for s in app.selectbox)
-    assert any('Area summaries and area comparisons are currently available for Oregon only' in i.value for i in app.info)
+    assert any('Area comparisons are currently available for Oregon only' in i.value for i in app.info)

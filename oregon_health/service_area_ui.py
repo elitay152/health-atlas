@@ -87,9 +87,11 @@ def render_service_area(demo=False, *, health_path=None, year=2023, region=OREGO
         st.caption('No patient/client addresses, uploaded address lists, geocoding or drive-time service are used. This definition starts with county IDs; tract-based analytical areas require separately suitable geography.')
         st.link_button('Boundary source & MIT attribution',service_areas.SOURCE)
     if 'service_area_summary' in region.supported_sources:
-        render_summary(codes,year,health_path)
+        render_summary(codes,year,health_path,region=region)
     else:
-        st.info('Washington area definitions can be saved and shared. Area summaries and area comparisons are currently available for Oregon only.')
+        st.info(f'Service-area summaries are not available for {region.name}.')
+    if 'service_area_compare' not in region.supported_sources:
+        st.info('Area comparisons are currently available for Oregon only.')
     compared = render_comparison(codes,year,health_path) if 'service_area_compare' in region.supported_sources else {}
     params=service_areas.link_params(codes, region=region) if st.session_state.get('area_active') else {}
     # Include an explicit empty A when sharing an unfinished comparison.

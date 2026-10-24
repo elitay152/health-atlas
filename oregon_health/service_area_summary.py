@@ -12,6 +12,7 @@ from oregon_health import census, geocoding, hospitals, hrsa, service_areas
 from oregon_health.data import DB_PATH, MEASURES
 from oregon_health.profile import county_names
 from oregon_health.status import last_refresh
+from oregon_health.regions import OREGON, get_region, cache_dir as region_cache_dir, check_identity
 
 
 def _utc(value):
@@ -35,8 +36,12 @@ def _rows(db,sql,params=None):
     return [dict(zip([x[0] for x in c.description],r)) for r in c.fetchall()]
 
 
-def _read(kind,path,year):
+def _read(kind,path,year,*,region=OREGON):
+    region=get_region(region)
+    names=county_names(region)
     with duckdb.connect(str(path),read_only=True) as db:
+        if kind!='HRSA designations':
+            check_identity(db,region)
         if kind=='CDC health':
             rows=_rows(db,'SELECT * FROM estimates WHERE year = ?',[year])
             p=_rows(db,'SELECT source, imported_at FROM provenance')[0]
@@ -44,7 +49,7 @@ def _read(kind,path,year):
             keys=set()
             for r in rows:
                 key=(r['fips'],r['measure'])
-                if r['fips'] not in county_names() or key in keys:
+                if r['fips'] not in names or key in keys:
                     raise ValueError('Duplicate or invalid health geography')
                 keys.add(key)
                 v,l,h=[_number(r[k],percent=True) for k in ('prevalence','low','high')]
@@ -59,7 +64,7 @@ def _read(kind,path,year):
             p['fetched_at']=p.pop('imported_at')
             keys=set()
             for r in rows:
-                if r['fips'] not in county_names() or r['fips'] in keys:
+                if r['fips'] not in names or r['fips'] in keys:
                     raise ValueError('Duplicate or invalid ACS geography')
                 keys.add(r['fips'])
                 for k in ('population','population_moe'):
@@ -71,9 +76,9 @@ def _read(kind,path,year):
             p=_rows(db,'SELECT * FROM provenance')[0]
             if p['dataset']!=hospitals.DATASET:
                 raise ValueError('CMS source mismatch')
+            mapped={name.upper():code for code,name in names.items()}
             for r in rows:
-                mapped={name.upper():code for code,name in county_names().items()}
-                if (not re.fullmatch('[A-Z0-9]{6}',r['facility_id']) or r['state']!='OR'
+                if (not re.fullmatch('[A-Z0-9]{6}',r['facility_id']) or r['state']!=region.abbr
                         or r['county_fips'] is not None and mapped.get((r['county'] or '').upper())!=r['county_fips']):
                     raise ValueError('Invalid CMS identity')
         elif kind=='Address matches':
@@ -82,13 +87,16 @@ def _read(kind,path,year):
             if p['benchmark']!=geocoding.BENCHMARK or p['source_url']!=geocoding.SOURCE_URL:
                 raise ValueError('Address benchmark/source mismatch')
         else:
-            hrsa.check_region(db)  # This audit/summary is Oregon-only.
+            hrsa.check_region(db,region)
             rows=[json.loads(r[0]) for r in db.execute('SELECT payload FROM features').fetchall()]
             p=json.loads(db.execute('SELECT payload FROM provenance').fetchone()[0])
             for r in rows:
                 if (not re.fullmatch('[A-Za-z0-9]{10}',r['designation_id'])
                         or r['discipline'] not in hrsa.DISCIPLINES or r['status'] not in hrsa.STATUSES.values()
-                        or r['category'] not in {'Geographic','Population group','Facility'}):
+                        or r['category'] not in {'Geographic','Population group','Facility'}
+                        or r.get('state_fips',region.state_fips)!=region.state_fips
+                        or r.get('state',region.abbr)!=region.abbr
+                        or r['county_fips'] is not None and r['county_fips'] not in names):
                     raise ValueError('Invalid HRSA record')
                 datetime.fromisoformat(r['source_date'])
                 hrsa._geometry(r['geometry'],r['category'])
@@ -106,13 +114,13 @@ def _read(kind,path,year):
     return rows,p
 
 
-def _load(kind,path,year,now,ttl,identity):
-    source=dict(source=kind,state='Not loaded',records=None,fetched_at=None,freshness='Not evaluated',
+def _load(kind,path,year,now,ttl,identity,*,region=OREGON):
+    source=dict(source=kind,region=region.abbr,state_fips=region.state_fips,state='Not loaded',records=None,fetched_at=None,freshness='Not evaluated',
                 retained_after_failure=False,provenance=None,unresolved_counties=None)
     if not path.exists():
         return [],source
     try:
-        rows,p=_read(kind,path,year)
+        rows,p=_read(kind,path,year,region=region)
         fetched=_utc(p['fetched_at'])
         event=last_refresh(path,identity)
         source.update(state='Loaded',records=len(rows),fetched_at=fetched.isoformat(),
@@ -120,45 +128,47 @@ def _load(kind,path,year,now,ttl,identity):
             retained_after_failure=bool(event and event['outcome']=='failed' and _utc(event['checked_at'])>=fetched),
             provenance={k:v.isoformat() if hasattr(v,'isoformat') else v for k,v in p.items()})
         if kind in {'CMS hospitals','HRSA designations'}:
-            source['unresolved_counties']=sum(r.get('county_fips') not in county_names() for r in rows)
+            source['unresolved_counties']=sum(r.get('county_fips') not in county_names(region) for r in rows)
         return rows,source
     except (ValueError,TypeError,KeyError,IndexError,AttributeError,OSError,duckdb.Error):
         source['state']='Unreadable / incompatible'
         return [],source
 
 
-def summarize(codes,year,*,cache_dir=None,health_path=None,now=None):
-    codes=service_areas.normalize(codes)
+def summarize(codes,year,*,cache_dir=None,health_path=None,now=None,region=OREGON):
+    region=get_region(region)
+    region.require("service_area_summary")
+    codes=service_areas.normalize(codes,region=region)
     if not codes:
         raise ValueError('Select at least one whole county')
     if type(year) is not int or not 2000<=year<=2100:
         raise ValueError('Invalid summary estimate year')
-    root=Path(cache_dir) if cache_dir is not None else DB_PATH.parent
+    root=Path(cache_dir) if cache_dir is not None else region_cache_dir(region,DB_PATH.parent)
     now=_utc(now or datetime.now(timezone.utc))
-    specs=[('CDC health',Path(health_path) if health_path else root/'oregon.duckdb',timedelta(days=1),'swc5-untb'),
+    specs=[('CDC health',Path(health_path) if health_path else root/('oregon.duckdb' if region==OREGON else 'counties.duckdb'),timedelta(days=1),'swc5-untb'),
            ('ACS context',root/f'census_{year}.duckdb',census.CACHE_TTL,year),
            ('CMS hospitals',root/'hospitals.duckdb',hospitals.CACHE_TTL,hospitals.DATASET),
            ('Address matches',root/'hospital_locations.duckdb',geocoding.CACHE_TTL,hospitals.DATASET),
            ('HRSA designations',root/'hrsa.duckdb',hrsa.CACHE_TTL,'hrsa-hpsa')]
     saved={};sources=[]
     for kind,path,ttl,identity in specs:
-        saved[kind],source=_load(kind,path,year,now,ttl,identity)
+        saved[kind],source=_load(kind,path,year,now,ttl,identity,region=region)
         sources.append(source)
     loaded={s['source']:s['state']=='Loaded' for s in sources}
-    names=county_names()
+    names=county_names(region)
     h={(r['fips'],r['measure']):r for r in saved['CDC health']}
     health=[]
     for code in codes:
         for measure,label in MEASURES.items():
             row=h.get((code,measure),{})
-            health.append(dict(county_fips=code,county=names[code],measure=measure,definition=label,year=year,unit='percent',confidence=95,
+            health.append(dict(state=region.abbr,state_fips=region.state_fips,county_fips=code,county=names[code],measure=measure,definition=label,year=year,unit='percent',confidence=95,
                 population_universe='Adults',estimate_type='Crude prevalence',
                 prevalence=row.get('prevalence'),low=row.get('low'),high=row.get('high'),
                 uncertainty='95% interval' if row.get('low') is not None and row.get('high') is not None else 'Interval unavailable',
                 status='Source unavailable' if not loaded['CDC health'] else
                     'No saved estimate' if row.get('prevalence') is None else 'Available'))
     d={r['fips']:r for r in saved['ACS context']}
-    demographics=[dict(county_fips=code,county=names[code],period=f'{year-4}–{year}',
+    demographics=[dict(state=region.abbr,state_fips=region.state_fips,county_fips=code,county=names[code],period=f'{year-4}–{year}',
         period_start=year-4,period_end=year,moe_confidence=90,
         **{k:d.get(code,{}).get(k) for k in census.COLUMNS}) for code in codes]
     complete=loaded['ACS context'] and all(r['population'] is not None for r in demographics)
@@ -168,13 +178,16 @@ def summarize(codes,year,*,cache_dir=None,health_path=None,now=None):
     selected=[r for r in all_hospitals if r['county_fips'] in codes]
     locations={r['facility_id']:r for r in saved['Address matches']}
     accepted=[]
+    west,south,east,north=region.bounds
     if loaded['CMS hospitals'] and loaded['Address matches']:
         for r in selected:
             p=locations.get(r['facility_id'],{})
             lon,lat=p.get('longitude'),p.get('latitude')
             if (p.get('location_status')=='matched_exact' and p.get('address_hash')==geocoding.address_hash(r)
-                    and p.get('matched_address') and all(isinstance(v,(int,float)) and not isinstance(v,bool) and math.isfinite(v) for v in (lon,lat))
-                    and -124.8<=lon<=-116.3 and 41.9<=lat<=46.4 and geocoding.in_county(lon,lat,r['county_fips'])):
+                    and p.get('matched_address') and all(r.get(k) for k in ('address','city','zip_code'))
+                    and all(isinstance(v,(int,float)) and not isinstance(v,bool) and math.isfinite(v) for v in (lon,lat))
+                    and west<=lon<=east and south<=lat<=north
+                    and geocoding.in_county(lon,lat,r['county_fips'],region=region)):
                 accepted.append(r['facility_id'])
     groups=defaultdict(list)
     for r in saved['HRSA designations']:
@@ -184,7 +197,7 @@ def summarize(codes,year,*,cache_dir=None,health_path=None,now=None):
         designations=len({r['designation_id'] for r in rows}),
         designation_ids=sorted({r['designation_id'] for r in rows}),components=len(rows),
         without_geometry=sum(r['geometry'] is None for r in rows)) for k,rows in sorted(groups.items())]
-    return dict(area=service_areas.definition(codes),estimate_year=year,summary_as_of=now.isoformat(),sources=sources,
+    return dict(state=region.abbr,state_fips=region.state_fips,area=service_areas.definition(codes,region=region),estimate_year=year,summary_as_of=now.isoformat(),sources=sources,
         health=health,demographics=demographics,
         population=dict(estimate=population,moe90=population_moe,covered_counties=sum(r['population'] is not None for r in demographics),
                         selected_counties=len(codes),status='Complete selected-county sum' if complete else 'Withheld: compatible population estimates missing',

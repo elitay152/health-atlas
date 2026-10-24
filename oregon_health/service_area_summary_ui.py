@@ -8,9 +8,12 @@ import streamlit as st
 from oregon_health import service_area_summary
 from oregon_health.charts import intervals
 from oregon_health.data import MEASURES
+from oregon_health.regions import OREGON, get_region
 
 
-def render_summary(codes,year,health_path=None):
+def render_summary(codes,year,health_path=None,*,region=OREGON):
+    region=get_region(region)
+    region.require("service_area_summary")
     if not codes:
         st.session_state['show_area_summary']=False
     enabled=st.checkbox('Show service-area summary',key='show_area_summary',disabled=not codes,
@@ -18,10 +21,10 @@ def render_summary(codes,year,health_path=None):
     if not enabled:
         return
     st.markdown('### Service-area summary')
-    st.caption(f'Health estimate year: {year} · ACS period: {year-4}–{year} · Whole-county membership')
+    st.caption(f'{region.name} · Health estimate year: {year} · ACS period: {year-4}–{year} · Whole-county membership')
     st.button('Update summary from saved data',key='area_summary_update')
     report=service_area_summary.summarize(codes,year,
-        cache_dir=Path(health_path).parent if health_path else None,health_path=health_path)
+        cache_dir=Path(health_path).parent if health_path else None,health_path=health_path,region=region)
     population=report['population'];facilities=report['hospitals']
     a,b,c=st.columns(3)
     a.metric('ACS population',f"{population['estimate']:,.0f}" if population['estimate'] is not None else 'Unavailable')
@@ -71,7 +74,7 @@ def render_summary(codes,year,health_path=None):
             if source['state']=='Loaded':
                 st.text(source['source'])
                 st.json(source['provenance'],expanded=False)
-        st.caption('Record and unresolved-county counts above describe statewide saved snapshots. Unknown counties cannot be assigned to this area and are excluded. A fresh fetch does not establish a current source release. Load/refresh Census context in County spotlight and hospital/address-match/HRSA data in their source panels, then update this summary. This panel only reads snapshots; unavailable sources do not block the rest.')
+        st.caption('Record and unresolved-county counts above describe statewide saved snapshots. Unknown counties cannot be assigned to this area and are excluded. A fresh fetch does not establish a current source release. Load Census context in Explore counties and hospital/address-match/HRSA data in Healthcare access, then return to update this summary. This panel only reads snapshots; unavailable sources do not block the rest.')
     st.download_button('Download service-area summary (JSON)',json.dumps(report,indent=2,allow_nan=False),
-        'health-atlas-area-summary.json','application/json',on_click='ignore')
+        'health-atlas-area-summary.json' if region==OREGON else f'health-atlas-{region.name.lower()}-area-summary.json','application/json',on_click='ignore')
     st.caption('The download retains the area definition, county values, intervals, coverage states, source dates and unsupported aggregations. Population is not a patient count or market-size estimate. Cross-area totals must account for overlapping counties.')
