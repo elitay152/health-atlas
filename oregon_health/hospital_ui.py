@@ -7,6 +7,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
+from oregon_health.regions import OREGON, get_region
 from oregon_health import hospitals
 from oregon_health.api_cache import RefreshLimited
 from oregon_health.profile import county_names
@@ -20,10 +21,11 @@ def emergency_label(value):
     return "Not reported" if value is None else "Yes" if value else "No"
 
 
-def filter_records(records, query="", county=None, types=()):
+def filter_records(records, query="", county=None, types=(), *, region=OREGON):
     """Literal, case-insensitive search; values never become SQL or regex."""
-    if county not in (None, UNKNOWN) and county not in county_names():
-        raise ValueError("Unknown Oregon county")
+    region = get_region(region)
+    if county not in (None, UNKNOWN) and county not in county_names(region):
+        raise ValueError(f"Unknown {region.name} county")
     query = query.strip().casefold()
     return [r for r in records
             if (county is None or (r["county_fips"] is None if county == UNKNOWN else r["county_fips"] == county))
@@ -61,12 +63,12 @@ def _open_profile(fips):
     st.session_state["profile_county"] = fips
 
 
-def _detail(record, context_available, location=None):
+def _detail(record, context_available, location=None, *, region=OREGON):
     st.markdown("#### Facility details")
     st.text(record["name"])
     st.caption(f"CMS Facility ID: {record['facility_id']} · This identifier is not an NPI.")
     st.text("\n".join([record["address"] or "Street address not reported",
-                         f"{record['city'] or 'City not reported'}, OR {record['zip_code'] or 'ZIP not reported'}"]))
+                         f"{record['city'] or 'City not reported'}, {record['state']} {record['zip_code'] or 'ZIP not reported'}"]))
     st.text(f"County: {record['county'] or 'Not reported'}")
     st.text(f"Type: {record['hospital_type'] or 'Not reported'}")
     st.text(f"Ownership: {record['ownership'] or 'Not reported'}")
@@ -77,24 +79,29 @@ def _detail(record, context_available, location=None):
             st.text(f"Matched address: {location['matched_address']}")
             st.caption(f"Approximate point: {location['latitude']:.5f}, {location['longitude']:.5f}. "
                        "Census address interpolation, not a verified building or entrance.")
-    else:
+    elif region == OREGON:
         st.caption("CMS supplies no coordinates. Enable approximate hospital locations to request Census address matches.")
+    else:
+        st.caption("CMS supplies no coordinates. Approximate address locations have not been validated for Washington; no points are mapped.")
     fips = record["county_fips"]
-    if fips in county_names() and context_available:
-        st.button(f"View {county_names()[fips]} County profile", key="hospital_open_county",
+    if fips in county_names(region) and context_available:
+        st.button(f"View {county_names(region)[fips]} County profile", key="hospital_open_county",
                   on_click=_open_profile, args=(fips,))
         st.markdown("[Go to county profile ↑](#county-profile)")
         st.caption("County estimates describe residents, not patients of this hospital. The hospital release and health estimate year may differ.")
-    elif fips in county_names():
+    elif fips in county_names(region):
         st.info("County profiles need CDC health data. Refresh the health source to explore community context.")
     else:
-        st.info("This facility's county could not be linked to Oregon community context.")
+        st.info("This facility's county could not be linked to the selected state’s community context.")
 
 
-def render_hospitals(demo=False, context_available=True):
+def render_hospitals(demo=False, context_available=True, *, region=OREGON):
+    region = get_region(region)
+    region.require("hospitals")
+    region_options = {} if region == OREGON else {"region": region}
     st.divider()
     st.subheader("Find a hospital", anchor="hospital-directory")
-    st.caption("Explore CMS-listed Oregon hospitals and connect their counties to community health context.")
+    st.caption(f"Explore CMS-listed {region.name} hospitals and connect their counties to community health context.")
     if demo:
         # Do not mix a previously enabled real directory into synthetic sessions.
         st.session_state["show_hospitals"] = False
@@ -106,15 +113,15 @@ def render_hospitals(demo=False, context_available=True):
     if not enabled:
         st.caption("Load the directory when you need it. The health map does not wait for CMS.")
         return
-    path = hospitals.DB_PATH
+    path = hospitals.hospital_path(region)
     retry = st.button("Refresh hospital directory", key="hospital_refresh")
     attempt_key = f"hospital_attempt:{path}"
     try:
-        if retry or (not st.session_state.get(attempt_key) and hospitals.needs_refresh(path)):
+        if retry or (not st.session_state.get(attempt_key) and hospitals.needs_refresh(path, **region_options)):
             st.session_state[attempt_key] = True
             try:
-                with st.spinner("Loading Oregon hospitals from CMS…"):
-                    hospitals.refresh(path, force=retry)
+                with st.spinner(f"Loading {region.name} hospitals from CMS…"):
+                    hospitals.refresh(path, force=retry, **region_options)
                 st.session_state.pop(attempt_key, None)
             except RefreshLimited as exc:
                 st.info(str(exc))
@@ -124,8 +131,8 @@ def render_hospitals(demo=False, context_available=True):
         if not path.exists():
             st.info("Hospital listings are currently unavailable. Try refreshing after five minutes. Health estimates remain available.")
             return
-        report = hospitals.coverage(path)
-        records = hospitals.directory(path=path)
+        report = hospitals.coverage(path, **region_options)
+        records = hospitals.directory(path=path, **region_options)
     except (ValueError, KeyError, TypeError, OSError, duckdb.Error):
         logging.getLogger(__name__).exception("CMS hospital snapshot unavailable")
         st.info("Hospital listings are currently unavailable. Health estimates remain available.")
@@ -141,8 +148,8 @@ def render_hospitals(demo=False, context_available=True):
         st.warning("Hospital refresh is due. These are previously downloaded records, not a live facility inventory.")
     represented = sum(c["listed_hospitals"] > 0 for c in report["counties"])
     cards = st.columns(3)
-    cards[0].metric("Oregon hospitals listed", report["records"])
-    cards[1].metric("Counties represented", f"{represented} / 36")
+    cards[0].metric(f"{region.name} hospitals listed", report["records"])
+    cards[1].metric("Counties represented", f"{represented} / {region.county_count}")
     cards[2].metric("Reported emergency services", sum(r["emergency_services"] is True for r in records))
     st.caption(f"[CMS Hospital General Information]({hospitals.SOURCE_URL}) · Released {provenance['released']} · "
                f"Modified {provenance['modified']} · Fetched {provenance['fetched_at']:%Y-%m-%d %H:%M UTC}")
@@ -155,9 +162,9 @@ def render_hospitals(demo=False, context_available=True):
             "fips": "County FIPS", "county": "County", "listed_hospitals": "CMS-listed hospitals"}), hide_index=True)
         st.caption("Source refreshes are typically quarterly and may change. The app reuses downloads for 24 hours; refresh attempts share a five-minute limit. CMS public reporting data are in the public domain; no government endorsement is implied.")
 
-    names = county_names()
+    names = county_names(region)
     county_options = [None, *names, UNKNOWN]
-    county_label = lambda value: "All Oregon counties" if value is None else "Unresolved county" if value == UNKNOWN else f"{names[value]} County"
+    county_label = lambda value: f"All {region.name} counties" if value is None else "Unresolved county" if value == UNKNOWN else f"{names[value]} County"
     search_col, county_col = st.columns([1.5, 1])
     query = search_col.text_input("Search hospitals", key="hospital_query", max_chars=120,
                                   placeholder="Name, city, ZIP, address or facility ID")
@@ -167,12 +174,16 @@ def render_hospitals(demo=False, context_available=True):
         st.session_state["hospital_types"] = [t for t in st.session_state["hospital_types"] if t in available_types]
     types = st.multiselect("Hospital types", available_types,
                            key="hospital_types", placeholder="All hospital types")
-    filtered = filter_records(records, query, county, types)
+    filtered = filter_records(records, query, county, types, region=region)
     st.caption(f"{len(filtered)} of {len(records)} listed hospitals match your filters.")
     if not filtered:
         st.info("No listed hospitals match these filters. Try another county or clear the search and type filters. This does not establish an absence of healthcare services.")
         return
-    locations, location_provenance = render_locations(records, filtered)
+    if "hospital_locations" in region.supported_sources:
+        locations, location_provenance = render_locations(records, filtered)
+    else:
+        locations, location_provenance = {}, None
+        st.info("CMS supplies no coordinates. Washington address matching has not been validated; hospital map points are unavailable. Listings remain searchable below.")
     table_col, detail_col = st.columns([1.5, 1], gap="large")
     with table_col:
         frame = pd.DataFrame([{
@@ -183,7 +194,7 @@ def render_hospitals(demo=False, context_available=True):
         st.dataframe(frame, hide_index=True, width="stretch", key="hospital_results",
                      column_config={"Facility ID": st.column_config.TextColumn("Facility ID")})
         st.download_button("Download filtered hospital CSV", export_csv(filtered, provenance, locations, location_provenance),
-                           "health-atlas-oregon-hospitals.csv", "text/csv", key="hospital_download")
+                           f"health-atlas-{region.name.lower()}-hospitals.csv", "text/csv", key="hospital_download")
         st.caption("Download includes source fields, release dates and fetch provenance. Spreadsheet formulas are escaped; import ID and ZIP columns as text to retain leading zeros.")
     with detail_col:
         by_id = {r["facility_id"]: r for r in filtered}
@@ -194,6 +205,6 @@ def render_hospitals(demo=False, context_available=True):
                                 key="hospital_detail", placeholder="Select a listed hospital")
         if selected:
             with st.container(border=True):
-                _detail(by_id[selected], context_available, locations.get(selected))
+                _detail(by_id[selected], context_available, locations.get(selected), region=region)
         else:
             st.info("Choose a hospital to see its reported attributes and county context.")

@@ -1,6 +1,6 @@
 # Oregon and Washington county release verification
 
-This release enables Washington **county health and Census context** alongside Oregon. It does not establish nationwide coverage. Tracts, hospital directories/address matches, HRSA shortage designations and whole-county service-area workflows remain Oregon-only. Their controls, source audits and shared-link settings are not used in Washington.
+This release enables Washington **county health and Census context** alongside Oregon. It does not establish nationwide coverage. Washington also supports a separate [CMS hospital directory](washington-hospitals.md), verified after this county release. Tracts, address matches, HRSA shortage designations and whole-county service-area workflows remain Oregon-only. Their controls, source audits and shared-link settings are not used in Washington.
 
 ## Reproduce
 

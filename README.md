@@ -182,7 +182,9 @@ CMS does not supply coordinates in this file. The importer creates no coordinate
 
 ## Explore hospitals
 
-Use the **Hospitals** page link, then **Show hospital directory** to load CMS-listed Oregon hospitals. Search by name, city, ZIP, street address, county, type or facility ID, and combine the search with county and hospital-type filters. Search is literal and case-insensitive. All 36 counties remain selectable, including counties with no records; unresolved county links are a separate filter. Clear filters to broaden an empty result.
+Washington directory support and current CMS coverage are documented in the [two-state hospital verification](docs/washington-hospitals.md). Use `uv run python -m oregon_health.hospitals --region WA` for a separate Washington import; its cache is `data/regions/wa/hospitals.duckdb`. State identity guards prevent either region from reading/replacing the other’s snapshot. Washington has no hospital location toggle until its geocoder is validated.
+
+Use the **Hospitals** page link, then **Show hospital directory** to load CMS-listed hospitals for the selected state (Oregon or Washington). Search by name, city, ZIP, street address, county, type or facility ID, and combine the search with county and hospital-type filters. Search is literal and case-insensitive. All configured counties remain selectable (36 Oregon / 39 Washington), including counties with no records; unresolved county links are a separate filter. Clear filters to broaden an empty result.
 
 Choose a hospital from the details selector to see its address, source Facility ID, type, ownership and reported emergency-services status. Missing fields say **Not reported**. **View [county] County profile** connects to community health context; county estimates describe residents, not that hospital's patients. Facility release dates are displayed independently of the selected health estimate year. Hospital filters are local to the session and are not included in shared comparison links.
 
@@ -350,7 +352,7 @@ Example with overlapping Lane/Multnomah and Clackamas/Multnomah definitions:
 
 ## Region configuration (Oregon and Washington county explorer)
 
-`oregon_health.regions` defines explicit state abbreviations/FIPS, expected county catalogs, map centers/bounds, source coverage and deployment status. Oregon and Washington are available through the sidebar state selector. Washington supports **county CDC health and ACS context** only; tract, hospital/geocoder, HRSA and service-area paths remain Oregon-specific. A `state=WA` link loads the isolated Washington explorer. Unsupported state codes are rejected; switching states clears view selections to prevent cross-state reuse.
+`oregon_health.regions` defines explicit state abbreviations/FIPS, expected county catalogs, map centers/bounds, source coverage and deployment status. Oregon and Washington are available through the sidebar state selector. Washington supports **county CDC health, ACS context and CMS hospital listings**; tracts, address geocoding, HRSA and service-area paths remain Oregon-specific. A `state=WA` link loads the isolated Washington explorer. Unsupported state codes are rejected; switching states clears view selections to prevent cross-state reuse.
 
 Inspect a region without network requests:
 
@@ -401,4 +403,4 @@ Measured on the Linux cloud workspace, 2026-10-23 (CDC 2025 county release, esti
 | Oregon | 36 / 324 | 3.943 s | 0.088 s | 4 / 0 | 115.7 MiB | 2,121,728 bytes | Yes |
 | Washington | 39 / 351 | 3.188 s | 0.097 s | 4 / 0 | 115.8 MiB | 2,121,728 bytes | Yes |
 
-Development budgets per state: **cold <120 seconds, warm <2 seconds with zero requests, peak RSS <512 MiB, combined county+ACS files <10 MB**, with failure retention required. These are regression gates for the representative importer/query workload, not Streamlit browser rendering, full-app RSS, other source refreshes or concurrent-user benchmarks. Network timing varies; RSS is the subprocess lifetime high-water mark including imports. A replacement temporarily needs room for both old and new files, and long-lived readers can retain an old file's disk allocation. Washington's county UI is enabled after the [two-state release verification](docs/region-release-check.md); extended source workflows remain Oregon-only.
+Development budgets per state: **cold <120 seconds, warm <2 seconds with zero requests, peak RSS <512 MiB, combined county+ACS files <10 MB**, with failure retention required. These are regression gates for the representative importer/query workload, not Streamlit browser rendering, full-app RSS, other source refreshes or concurrent-user benchmarks. Network timing varies; RSS is the subprocess lifetime high-water mark including imports. A replacement temporarily needs room for both old and new files, and long-lived readers can retain an old file's disk allocation. Washington's county UI is enabled after the [two-state release verification](docs/region-release-check.md); address geocoding, HRSA, tract and service-area workflows remain Oregon-only.

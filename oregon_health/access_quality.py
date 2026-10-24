@@ -12,6 +12,7 @@ from pathlib import Path
 import duckdb
 
 from oregon_health import geocoding, hospitals, hrsa
+from oregon_health.regions import check_identity
 from oregon_health.profile import county_names
 from oregon_health.status import last_refresh
 
@@ -33,6 +34,7 @@ def _rows(db, sql):
 def _read(path, kind):
     with duckdb.connect(str(path),read_only=True) as db:
         if kind=='CMS hospitals':
+            check_identity(db)  # This audit is Oregon-only; reject foreign state snapshots.
             rows=_rows(db,'SELECT facility_id,name,address,city,state,zip_code,county,county_fips,hospital_type,ownership,emergency_services FROM hospitals')
             provenance=_rows(db,'SELECT released,modified,fetched_at FROM provenance')[0]
         elif kind=='Address matches':
