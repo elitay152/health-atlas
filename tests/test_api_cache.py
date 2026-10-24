@@ -133,7 +133,7 @@ def test_simultaneous_refresh_reservations_allow_only_one(tmp_path):
 
 
 @pytest.mark.parametrize('state', ['OR', 'WA'])
-@pytest.mark.parametrize('damage', ['corrupt', 'schema', 'foreign'])
+@pytest.mark.parametrize('damage', ['corrupt', 'schema', 'foreign', 'empty_provenance', 'duplicate_provenance', 'null_state', 'empty_legacy'])
 def test_unreadable_county_cache_keeps_independent_panels(tmp_path, monkeypatch, state, damage):
     from oregon_health.regions import get_region, health_path
     base = tmp_path / 'oregon.duckdb'
@@ -144,6 +144,17 @@ def test_unreadable_county_cache_keeps_independent_panels(tmp_path, monkeypatch,
     elif damage == 'schema':
         with duckdb.connect(str(path)) as db:
             db.execute('CREATE TABLE unrelated (value INTEGER)')
+    elif damage in {'empty_provenance', 'duplicate_provenance', 'null_state', 'empty_legacy'}:
+        region=get_region(state)
+        rows=[dict(stateabbr=state,locationid=next(iter(region.counties())),locationname='Synthetic',
+                   measureid='DIABETES',year='2023',data_value_type='Crude prevalence',
+                   data_value=10,low_confidence_limit=9,high_confidence_limit=11)]
+        data.store(rows,SOURCE,path,region=region)
+        with duckdb.connect(str(path)) as db:
+            if damage in {'empty_provenance','empty_legacy'}:db.execute('DELETE FROM provenance')
+            if damage=='empty_legacy':db.execute('ALTER TABLE provenance DROP COLUMN state_fips')
+            if damage=='duplicate_provenance':db.execute('INSERT INTO provenance SELECT * FROM provenance')
+            if damage=='null_state':db.execute('UPDATE provenance SET state_fips=NULL')
     else:
         foreign = get_region('WA' if state == 'OR' else 'OR')
         rows = [dict(stateabbr=foreign.abbr, locationid=next(iter(foreign.counties())),

@@ -86,7 +86,12 @@ def check_identity(db,region=OREGON):
     """Legacy provenance without state identity is Oregon only, never inferred."""
     region=get_region(region)
     columns={r[1] for r in db.execute("PRAGMA table_info('provenance')").fetchall()}
-    identity=db.execute('SELECT state_fips FROM provenance').fetchone()[0] if 'state_fips' in columns else '41'
+    # Read at most two rows: empty or ambiguous metadata cannot identify a snapshot.
+    query='SELECT state_fips FROM provenance LIMIT 2' if 'state_fips' in columns else 'SELECT 1 FROM provenance LIMIT 2'
+    rows=db.execute(query).fetchall()
+    if len(rows)!=1:
+        raise ValueError('Snapshot must contain exactly one provenance record')
+    identity=rows[0][0] if 'state_fips' in columns else '41'
     if identity!=region.state_fips:
         raise ValueError('Snapshot belongs to another region; choose a separate cache path')
 
