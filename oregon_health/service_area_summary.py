@@ -82,6 +82,7 @@ def _read(kind,path,year):
             if p['benchmark']!=geocoding.BENCHMARK or p['source_url']!=geocoding.SOURCE_URL:
                 raise ValueError('Address benchmark/source mismatch')
         else:
+            hrsa.check_region(db)  # This audit/summary is Oregon-only.
             rows=[json.loads(r[0]) for r in db.execute('SELECT payload FROM features').fetchall()]
             p=json.loads(db.execute('SELECT payload FROM provenance').fetchone()[0])
             for r in rows:
@@ -138,7 +139,7 @@ def summarize(codes,year,*,cache_dir=None,health_path=None,now=None):
            ('ACS context',root/f'census_{year}.duckdb',census.CACHE_TTL,year),
            ('CMS hospitals',root/'hospitals.duckdb',hospitals.CACHE_TTL,hospitals.DATASET),
            ('Address matches',root/'hospital_locations.duckdb',geocoding.CACHE_TTL,hospitals.DATASET),
-           ('HRSA designations',root/'hrsa.duckdb',hrsa.CACHE_TTL,'invalid-source')]
+           ('HRSA designations',root/'hrsa.duckdb',hrsa.CACHE_TTL,'hrsa-hpsa')]
     saved={};sources=[]
     for kind,path,ttl,identity in specs:
         saved[kind],source=_load(kind,path,year,now,ttl,identity)

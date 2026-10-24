@@ -9,6 +9,7 @@ import pydeck as pdk
 import requests
 import streamlit as st
 
+from oregon_health.regions import OREGON, get_region
 from oregon_health import hrsa
 from oregon_health.api_cache import RefreshLimited
 from oregon_health.map import boundaries
@@ -19,9 +20,10 @@ CATEGORIES = ["Geographic", "Population group", "Facility"]
 COLORS = {"Geographic": [23,107,99,90], "Population group": [184,106,64,90], "Facility": [80,115,146,220]}
 
 
-def filter_records(records, discipline, category, statuses, county=None):
-    if county not in (None,"__unresolved__") and county not in county_names():
-        raise ValueError("Unknown Oregon county")
+def filter_records(records, discipline, category, statuses, county=None, *, region=OREGON):
+    region = get_region(region)
+    if county not in (None,"__unresolved__") and county not in county_names(region):
+        raise ValueError(f"Unknown {region.name} county")
     return [r for r in records if r["discipline"] == discipline and r["category"] == category
             and r["status"] in statuses and (county is None or (
                 r["county_fips"] is None if county == "__unresolved__" else r["county_fips"] == county))]
@@ -29,6 +31,8 @@ def filter_records(records, discipline, category, statuses, county=None):
 
 def export_csv(records, provenance):
     rows=[{**{k:v for k,v in r.items() if k!="geometry"}, "has_geometry":r["geometry"] is not None,
+           "state":r.get("state",provenance.get("state","OR")),
+           "state_fips":r.get("state_fips",provenance.get("state_fips","41")),
            "source_url":provenance["service_url"], "fetched_at":provenance["fetched_at"],
            "generalization_degrees":provenance["generalization_degrees"]} for r in records]
     def safe(value):
@@ -57,25 +61,29 @@ def _open_component(allowed):
         st.session_state["hrsa_detail"]=key
 
 
-def designation_deck(records, category, selected=None):
+def designation_deck(records, category, selected=None, *, region=OREGON):
+    region = get_region(region)
     features=[dict(type="Feature", geometry=r["geometry"], properties={
         "name":r["name"], "feature_key":r["feature_key"],
         "outline":[35,59,53,255] if r["feature_key"]==selected else COLORS[category][:3]+[200],
         "width":3 if r["feature_key"]==selected else 1, "detail":f"{r['discipline']} · {r['designation_type']} · {r['status']}\nHPSA ID: {r['designation_id']}"})
               for r in records if r["geometry"] is not None]
     return pdk.Deck(layers=[
-        pdk.Layer("GeoJsonLayer",boundaries(),id="hrsa-counties",pickable=False,filled=False,
+        pdk.Layer("GeoJsonLayer",boundaries(region),id="hrsa-counties",pickable=False,filled=False,
                   get_line_color=[92,120,96,170],line_width_min_pixels=1),
         pdk.Layer("GeoJsonLayer",dict(type="FeatureCollection",features=features),id="hrsa-designations",
                   pickable=True,filled=True,stroked=True,get_fill_color=COLORS[category],
                   get_line_color="properties.outline",get_line_width="properties.width",
                   line_width_units="'pixels'",line_width_min_pixels=1,line_width_max_pixels=3,
                   get_point_radius=500,point_radius_min_pixels=5,point_radius_max_pixels=10),
-    ],initial_view_state=pdk.ViewState(latitude=44.15,longitude=-120.55,zoom=4.8,min_zoom=4,max_zoom=12),
+    ],initial_view_state=pdk.ViewState(latitude=region.center[1],longitude=region.center[0],zoom=region.zoom,min_zoom=4,max_zoom=12),
         map_provider=None,map_style=None,tooltip={"text":"{name}\n{detail}"})
 
 
-def render_hrsa(demo=False):
+def render_hrsa(demo=False, *, region=OREGON):
+    region = get_region(region)
+    region.require("hrsa")
+    region_options = {} if region == OREGON else {"region": region}
     st.divider()
     st.subheader("Health workforce shortage designations",anchor="shortage-designations")
     st.caption("Explore HRSA designations for primary care, dental health and mental health. Designations are administrative classifications, not health prevalence or a forecast of service demand.")
@@ -87,15 +95,15 @@ def render_hrsa(demo=False):
         return
     if not enabled:
         return
-    path=hrsa.DB_PATH
+    path=hrsa.hrsa_path(region)
     retry=st.button("Refresh HRSA designations",key="hrsa_refresh")
     attempt=f"hrsa_attempt:{path}"
     try:
-        if retry or (not st.session_state.get(attempt) and hrsa.needs_refresh(path)):
+        if retry or (not st.session_state.get(attempt) and hrsa.needs_refresh(path, **region_options)):
             st.session_state[attempt]=True
             try:
-                with st.spinner("Loading Oregon HRSA designations…"):
-                    hrsa.refresh(path,force=retry)
+                with st.spinner(f"Loading {region.name} HRSA designations…"):
+                    hrsa.refresh(path,force=retry, **region_options)
                 st.session_state.pop(attempt,None)
             except RefreshLimited as exc:
                 st.info(str(exc))
@@ -105,7 +113,7 @@ def render_hrsa(demo=False):
         if not path.exists():
             st.info("HRSA designations are unavailable. Retry after five minutes. Other sources remain usable.")
             return
-        records,provenance=hrsa.snapshot(path)
+        records,provenance=hrsa.snapshot(path, **region_options)
     except (ValueError,KeyError,TypeError,OSError,duckdb.Error):
         logging.getLogger(__name__).exception("HRSA snapshot unavailable")
         st.info("HRSA designations are unavailable. Other sources remain usable.")
@@ -119,15 +127,19 @@ def render_hrsa(demo=False):
             (event and event["outcome"]=="failed" and datetime.fromisoformat(event["checked_at"])>=fetched)):
         st.warning("Showing previously downloaded HRSA designations. Refresh is due or the latest refresh failed; check source dates.")
     dates=sorted({r["source_date"] for r in records})
-    st.caption(f"[HRSA source]({hrsa.SOURCE_URL}) · Warehouse dates: {', '.join(dates)} · Fetched {fetched:%Y-%m-%d %H:%M UTC} · 24-hour cache.")
+    st.caption(f"{region.name} snapshot · [HRSA source]({hrsa.SOURCE_URL}) · Warehouse dates: {', '.join(dates)} · Fetched {fetched:%Y-%m-%d %H:%M UTC} · 24-hour cache.")
+    st.caption(f"{len(records)} source components / facility points · "
+               f"{sum(r['geometry'] is None for r in records)} without geometry · "
+               f"{sum(r['county_fips'] is None for r in records)} unresolved county links across the full snapshot. "
+               "These are source-record counts, not people or clinicians.")
     st.caption("The public GIS view is not a full historical inventory. In the verified snapshot it returns Designated and Proposed For Withdrawal records; withdrawn records also exist in HRSA's separate CSV downloads. Proposed withdrawal is a distinct source status, not a completed withdrawal.")
     discipline=st.selectbox("Shortage discipline",list(hrsa.DISCIPLINES),key="hrsa_discipline")
     category=st.selectbox("Designation category",CATEGORIES,key="hrsa_category")
     statuses=st.multiselect("Designation statuses",list(hrsa.STATUSES.values()),default=["Designated"],key="hrsa_statuses")
-    names=county_names()
+    names=county_names(region)
     county=st.selectbox("Designation component or facility county",[None,*names,"__unresolved__"],key="hrsa_county",
-        format_func=lambda v:"All Oregon counties" if v is None else "Unresolved county" if v=="__unresolved__" else names[v])
-    selected=filter_records(records,discipline,category,statuses,county)
+        format_func=lambda v:f"All {region.name} counties" if v is None else "Unresolved county" if v=="__unresolved__" else names[v])
+    selected=filter_records(records,discipline,category,statuses,county, region=region)
     if category=="Population group":
         st.info("These boundaries identify designated population groups, not every resident in the shaded area. Read the reported population type in the details.")
     elif category=="Facility":
@@ -140,7 +152,7 @@ def render_hrsa(demo=False):
         st.info("No source records match these filters. This does not establish an absence of workforce shortages.")
         return
     if any(r["geometry"] for r in selected):
-        st.pydeck_chart(designation_deck(selected,category,st.session_state.get("hrsa_detail")),height=420,key="hrsa_map",
+        st.pydeck_chart(designation_deck(selected,category,st.session_state.get("hrsa_detail"), region=region),height=420,key="hrsa_map",
             on_select=partial(_open_component,tuple(r["feature_key"] for r in selected)),selection_mode="single-object",
             alt="HRSA designation components or facility points. The table and details selector provide a non-map alternative.")
         st.caption(f"{'Teal' if category=='Geographic' else 'Copper' if category=='Population group' else 'Blue'}: {category.lower()} designations matching the selected status. Hover for source details; click to open the record below. Dark outline: selected record. Overlapping components are not an intensity scale or composite score.")

@@ -19,7 +19,7 @@ def record_refresh(path, identity, outcome):
     if outcome not in {"success", "failed", "key_required"}:
         raise ValueError("Unknown refresh outcome")
     identity = str(identity)
-    if not re.fullmatch(r"(?:[a-z0-9]{4}-[a-z0-9]{4}|[0-9]{4})", identity):
+    if identity != "hrsa-hpsa" and not re.fullmatch(r"(?:[a-z0-9]{4}-[a-z0-9]{4}|[0-9]{4})", identity):
         identity = "invalid-source"
     path = Path(path)
     try:
@@ -39,6 +39,8 @@ def last_refresh(path, identity):
     try:
         with closing(sqlite3.connect(f"file:{log.as_posix()}?mode=ro", uri=True, timeout=1)) as db:
             row = db.execute("SELECT outcome, checked_at FROM refreshes WHERE cache = ? AND identity = ?", [path.name, str(identity)]).fetchone()
+            if row is None and identity == 'hrsa-hpsa' and path.name == 'hrsa.duckdb':
+                row = db.execute("SELECT outcome, checked_at FROM refreshes WHERE cache = ? AND identity = 'invalid-source'", [path.name]).fetchone()
         return dict(outcome=row[0], checked_at=row[1]) if row else None
     except sqlite3.Error:
         return None
