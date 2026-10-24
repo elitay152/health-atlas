@@ -61,7 +61,9 @@ def export_csv(records, provenance, locations=None, location_provenance=None):
 
 
 def _open_profile(fips):
+    from oregon_health.navigation import go
     st.session_state["profile_county"] = fips
+    go("explore", county=fips)
 
 
 def _detail(record, context_available, location=None, *, region=OREGON):
@@ -88,7 +90,6 @@ def _detail(record, context_available, location=None, *, region=OREGON):
     if fips in county_names(region) and context_available:
         st.button(f"View {county_names(region)[fips]} County profile", key="hospital_open_county",
                   on_click=_open_profile, args=(fips,))
-        st.markdown("[Go to county profile ↑](#county-profile)")
         st.caption("County estimates describe residents, not patients of this hospital. The hospital release and health estimate year may differ.")
     elif fips in county_names(region):
         st.info("County profiles need CDC health data. Refresh the health source to explore community context.")

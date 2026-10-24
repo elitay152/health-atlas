@@ -64,9 +64,11 @@ def test_state_views_links_missingness_and_exports(state_caches, region):
     assert any('2019–2023' in item.value for item in app.caption)
     assert any(m.label == 'Population' and m.value == '10,000' for m in app.metric)
     assert any(m.label == 'Below poverty level' and m.value == 'Unavailable' for m in app.metric)
+    app.selectbox(key='view_selector').select('compare').run()
     table = next(item.value for item in app.dataframe if 'Measure' in item.value.columns)
     name = region.counties()[first]
     assert table[table.Measure == 'Current asthma'][name].iloc[0] == 'Unavailable'
+    app.selectbox(key='view_selector').select('explore').run()
     shared = dict(app.query_params)
     assert shared.get('state', 'OR') == region.abbr
     other = AppTest.from_file(APP, default_timeout=20)
@@ -109,7 +111,7 @@ def test_washington_never_renders_oregon_only_sources(state_caches, monkeypatch)
     assert app.query_params['compare'] == '53033'
     assert not any(key in app.query_params for key in ['local', 'tract', 'area', 'area_compare', 'area_b'])
     assert any('Oregon-only' in item.value for item in app.warning)
-    assert any('Tract, service-area summary and area-comparison workflows remain Oregon-only' in item.value for item in app.caption)
+    assert any('Area summaries and area comparisons are currently available for Oregon only' in item.value for item in app.info)
 
 
 def test_switching_states_resets_selection_and_demo(state_caches):
@@ -120,7 +122,7 @@ def test_switching_states_resets_selection_and_demo(state_caches):
     assert app.query_params['state'] == 'WA'
     assert not app.toggle(key='demo_mode').value
     assert app.selectbox(key='profile_county').value is None
-    assert all(name in regions.WASHINGTON.counties().values() for name in app.multiselect(key='compare_counties').value)
+    assert all(name in regions.WASHINGTON.counties().values() for name in app.session_state['compare_counties'])
     app.selectbox(key='profile_county').set_value('53033').run()
     assert app.query_params['county'] == '53033'
     app.selectbox(key='region_selector').set_value('OR').run()

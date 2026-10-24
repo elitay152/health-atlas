@@ -47,7 +47,9 @@ def make_app(tmp_path, monkeypatch, *, cached=True, health=True):
     monkeypatch.setattr(hospitals, "DB_PATH", path)
     if cached:
         hospitals.store([tuple(r[k] for k in hospitals.COLUMNS) for r in records()], source(), path)
-    return AppTest.from_file(APP, default_timeout=15), path
+    app = AppTest.from_file(APP, default_timeout=15)
+    app.query_params["view"] = "access"
+    return app, path
 
 
 def result_table(app):
@@ -93,7 +95,7 @@ def test_directory_is_opt_in_and_synthetic_mode_never_loads(tmp_path, monkeypatc
     monkeypatch.setattr(hospitals, "refresh", forbidden)
     app.run()
     assert not app.exception and not app.checkbox(key="show_hospitals").value
-    assert app.selectbox(key="health_measure").value == "DIABETES"
+    assert not any(s.key == "health_measure" for s in app.selectbox)
     app.checkbox(key="show_hospitals").set_value(True)
     app.sidebar.toggle(key="demo_mode").set_value(True).run()
     assert not app.exception
@@ -112,6 +114,7 @@ def test_directory_filters_details_and_county_context(tmp_path, monkeypatch):
     app.button(key="hospital_open_county").click().run()
     assert app.selectbox(key="profile_county").value == "41039"
     assert not app.exception
+    app.selectbox(key="view_selector").select("access").run()
     app.text_input(key="hospital_query").set_value("Portland").run()
     assert len(result_table(app)) == 1
     assert app.selectbox(key="hospital_detail").value is None
@@ -137,7 +140,7 @@ def test_cms_outage_without_cache_does_not_retry_on_filter_changes(tmp_path, mon
     app.run().checkbox(key="show_hospitals").check().run()
     assert not app.exception and len(calls) == 1
     assert any("Hospital listings are currently unavailable" in i.value for i in app.info)
-    app.selectbox(key="health_measure").select("OBESITY").run()
+    app.run()
     assert len(calls) == 1 and not app.exception
     assert "private diagnostic" not in " ".join(w.value for w in app.warning)
     app.button(key="hospital_refresh").click().run()

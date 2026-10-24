@@ -135,7 +135,9 @@ def test_panel_integrates_without_loading_sources_and_demo_skips_audit(tmp_path,
     def forbidden(*a,**kw):raise AssertionError('Status panel cannot load sources')
     monkeypatch.setattr(hospitals,'refresh',forbidden);monkeypatch.setattr(hrsa,'refresh',forbidden)
     monkeypatch.setattr(geocoding,'refresh',forbidden)
-    app=AppTest.from_file(Path(__file__).resolve().parents[1]/'app.py',default_timeout=20).run()
+    app=AppTest.from_file(Path(__file__).resolve().parents[1]/'app.py',default_timeout=20)
+    app.query_params['view']='sources'
+    app.run()
     assert not app.exception
     summary=next(d.value for d in app.dataframe if 'Snapshot' in d.value.columns)
     assert summary.Source.tolist()==['CMS hospitals','Address matches','HRSA designations']

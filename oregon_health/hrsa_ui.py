@@ -76,7 +76,7 @@ def designation_deck(records, category, selected=None, *, region=OREGON):
                   get_line_color="properties.outline",get_line_width="properties.width",
                   line_width_units="'pixels'",line_width_min_pixels=1,line_width_max_pixels=3,
                   get_point_radius=500,point_radius_min_pixels=5,point_radius_max_pixels=10),
-    ],initial_view_state=pdk.ViewState(latitude=region.center[1],longitude=region.center[0],zoom=region.zoom,min_zoom=4,max_zoom=12),
+    ],initial_view_state=pdk.ViewState(latitude=region.center[1],longitude=region.center[0],zoom=min(region.zoom, 4.5),min_zoom=4,max_zoom=12),
         map_provider=None,map_style=None,tooltip={"text":"{name}\n{detail}"})
 
 

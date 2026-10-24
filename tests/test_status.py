@@ -84,7 +84,7 @@ def test_panel_is_read_only_and_demo_labeled(monkeypatch):
     monkeypatch.setattr(api_cache, "refresh", unexpected)
     monkeypatch.setattr(census, "context", unexpected)
     app = AppTest.from_file(Path(__file__).resolve().parents[1]/"app.py", default_timeout=20)
-    app.query_params.update(demo="1",year="2022")
+    app.query_params.update(demo="1",year="2022",view="sources")
     app.run()
     assert not app.exception
     assert any("Data status & coverage" == s.value for s in app.subheader)

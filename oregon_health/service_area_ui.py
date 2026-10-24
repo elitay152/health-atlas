@@ -33,7 +33,7 @@ def area_deck(codes, *, region=OREGON):
     return pdk.Deck(layers=[pdk.Layer('GeoJsonLayer',collection,id='service-area-counties',
         pickable=True,get_fill_color='properties.color',get_line_color='properties.outline',
         line_width_min_pixels=1)],map_provider=None,map_style='__MAP_STYLE__',
-        initial_view_state=pdk.ViewState(latitude=region.center[1],longitude=region.center[0],zoom=region.zoom - 0.1,min_zoom=4,max_zoom=8),
+        initial_view_state=pdk.ViewState(latitude=region.center[1],longitude=region.center[0],zoom=min(region.zoom, 4.5),min_zoom=4,max_zoom=8),
         tooltip={'text':'{name} County · {fips}\n{membership}'})
 
 
