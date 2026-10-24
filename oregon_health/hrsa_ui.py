@@ -80,7 +80,8 @@ def designation_deck(records, category, selected=None, *, region=OREGON):
         map_provider=None,map_style=None,tooltip={"text":"{name}\n{detail}"})
 
 
-def render_hrsa(demo=False, *, region=OREGON):
+def render_hrsa(demo=False, *, region=OREGON, controls=None):
+    controls=controls if controls is not None else st.sidebar
     region = get_region(region)
     region.require("hrsa")
     region_options = {} if region == OREGON else {"region": region}
@@ -89,7 +90,8 @@ def render_hrsa(demo=False, *, region=OREGON):
     st.caption("Explore HRSA designations for primary care, dental health and mental health. Designations are administrative classifications, not health prevalence or a forecast of service demand.")
     if demo:
         st.session_state["show_hrsa"]=False
-    enabled=st.checkbox("Show HRSA shortage designations",key="show_hrsa",disabled=demo)
+    controls.subheader("Shortage designations")
+    enabled=controls.checkbox("Show HRSA shortage designations",key="show_hrsa",disabled=demo)
     if demo:
         st.info("Real HRSA designations are not loaded or mixed into the synthetic demo.")
         return
@@ -133,11 +135,11 @@ def render_hrsa(demo=False, *, region=OREGON):
                f"{sum(r['county_fips'] is None for r in records)} unresolved county links across the full snapshot. "
                "These are source-record counts, not people or clinicians.")
     st.caption("The public GIS view is not a full historical inventory. In the verified snapshot it returns Designated and Proposed For Withdrawal records; withdrawn records also exist in HRSA's separate CSV downloads. Proposed withdrawal is a distinct source status, not a completed withdrawal.")
-    discipline=st.selectbox("Shortage discipline",list(hrsa.DISCIPLINES),key="hrsa_discipline")
-    category=st.selectbox("Designation category",CATEGORIES,key="hrsa_category")
-    statuses=st.multiselect("Designation statuses",list(hrsa.STATUSES.values()),default=["Designated"],key="hrsa_statuses")
+    discipline=controls.selectbox("Shortage discipline",list(hrsa.DISCIPLINES),key="hrsa_discipline")
+    category=controls.selectbox("Designation category",CATEGORIES,key="hrsa_category")
+    statuses=controls.multiselect("Designation statuses",list(hrsa.STATUSES.values()),default=["Designated"],key="hrsa_statuses")
     names=county_names(region)
-    county=st.selectbox("Designation component or facility county",[None,*names,"__unresolved__"],key="hrsa_county",
+    county=controls.selectbox("Designation component or facility county",[None,*names,"__unresolved__"],key="hrsa_county",
         format_func=lambda v:f"All {region.name} counties" if v is None else "Unresolved county" if v=="__unresolved__" else names[v])
     selected=filter_records(records,discipline,category,statuses,county, region=region)
     if category=="Population group":

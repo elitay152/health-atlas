@@ -81,10 +81,10 @@ def test_ui_selection_share_clear_and_independence(tmp_path,monkeypatch):
     other=view(tmp_path,monkeypatch,linked)
     assert other.multiselect(key='area_counties').value==['41039','41051']
     # Selecting a different health measure/comparison cannot change membership.
-    app.selectbox(key='view_selector').select('compare').run()
+    app.radio(key='view_selector').set_value('compare').run()
     app.selectbox(key='health_measure').select('OBESITY').run()
     app.multiselect(key='compare_counties').set_value([]).run()
-    app.selectbox(key='view_selector').select('areas').run()
+    app.radio(key='view_selector').set_value('areas').run()
     assert app.multiselect(key='area_counties').value==['41051','41039']
     assert app.query_params['area']=='41039,41051'
     next(b for b in app.button if b.label=='Clear service area').click().run()

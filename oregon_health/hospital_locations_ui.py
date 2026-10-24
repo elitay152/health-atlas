@@ -31,11 +31,12 @@ def _open_hospital(ids):
         st.session_state["hospital_detail"] = facility_id
 
 
-def render_locations(records, filtered, *, region=OREGON):
+def render_locations(records, filtered, *, region=OREGON, controls=None):
+    controls=controls if controls is not None else st.sidebar
     region = get_region(region)
     region.require("hospital_locations")
     region_options = {} if region == OREGON else {"region": region}
-    if not st.checkbox("Show approximate hospital locations", key="show_hospital_locations",
+    if not controls.checkbox("Show approximate hospital locations", key="show_hospital_locations",
                        help="Sends the directory's published hospital addresses to the Census Geocoder. No search text or patient data is sent."):
         return {}, None
     st.caption("Address matches are approximate street locations, not verified buildings, entrances or travel-time estimates. Only exact, county-consistent matches are mapped; other records remain in the directory.")

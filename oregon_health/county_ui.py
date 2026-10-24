@@ -41,14 +41,16 @@ def open_map_profile(region):
     if fips:
         st.session_state['profile_county'] = fips
 
-def render_health(path, requested_region, view, use_demo, dataset):
+def render_health(path, requested_region, view, use_demo, dataset,*,controls=None):
+    controls=controls if controls is not None else st.sidebar
     region_options = {} if requested_region == OREGON else {"region": requested_region}
     census_options = {} if requested_region == OREGON else {"cache_dir": path.parent, **region_options}
     with duckdb.connect(str(path), read_only=True) as db:
-        return _render_health(db, requested_region, view, use_demo, dataset, region_options, census_options)
+        return _render_health(db, requested_region, view, use_demo, dataset, region_options, census_options, controls)
 
-def _render_health(db, requested_region, view, use_demo, dataset, region_options, census_options):
-    measure_column, year_column = st.columns([2, 1])
+def _render_health(db, requested_region, view, use_demo, dataset, region_options, census_options, controls):
+    controls.subheader('County filters' if view=='explore' else 'Comparison filters')
+    measure_column = year_column = controls
     requested_measure = st.query_params.get("measure")
     available_measures = {row[0] for row in db.execute("SELECT DISTINCT measure FROM estimates").fetchall()}
     measures = [code for code in MEASURES if code in available_measures]
@@ -58,7 +60,7 @@ def _render_health(db, requested_region, view, use_demo, dataset, region_options
     if "health_measure" not in st.session_state:
         st.session_state["health_measure"] = requested_measure if requested_measure in measures else measures[0]
         if requested_measure and requested_measure not in measures:
-            st.warning("The linked health measure is unavailable. Showing the measure selected below.")
+            st.warning("The linked health measure is unavailable. Showing the measure selected in the sidebar.")
     elif st.session_state["health_measure"] not in measures:
         st.session_state["health_measure"] = measures[0]
         st.warning("The selected measure is unavailable in this snapshot. Showing an available measure.")
@@ -72,7 +74,7 @@ def _render_health(db, requested_region, view, use_demo, dataset, region_options
     if "estimate_year" not in st.session_state:
         st.session_state["estimate_year"] = years[default_year]
         if requested_year and requested_year not in {str(value) for value in years}:
-            st.warning("The linked estimate year is unavailable. Showing the year selected below.")
+            st.warning("The linked estimate year is unavailable. Showing the year selected in the sidebar.")
     elif st.session_state["estimate_year"] not in years:
         st.session_state["estimate_year"] = years[0]
         st.warning("The previous year is unavailable for this measure. Showing the latest available year.")
@@ -101,15 +103,15 @@ def _render_health(db, requested_region, view, use_demo, dataset, region_options
         requested = st.query_params.get('county')
         st.session_state['profile_county'] = requested if requested in names else None
         if requested and requested not in names:
-            st.warning(f'That county link is not a recognized {requested_region.name} county. Choose a county below.')
+            st.warning(f'That county link is not a recognized {requested_region.name} county. Choose a county in the sidebar.')
     fips = st.session_state.get('profile_county')
     if view == 'explore':
-        fips = st.selectbox('County profile', list(names), format_func=lambda value: f'{names[value]} County',
+        fips = controls.selectbox('County profile', list(names), format_func=lambda value: f'{names[value]} County',
                             index=None, placeholder=f'Choose a {requested_region.name} county', key='profile_county')
         map_column, profile_column = st.columns([1.3, 1], gap='large')
         with map_column:
             st.subheader("The county landscape", anchor="county-map")
-            st.pydeck_chart(county_deck(frame, selected, **region_options), height=380, key="county_map", on_select=partial(open_map_profile, requested_region), selection_mode="single-object", alt=f"{requested_region.name} counties colored by estimated prevalence. Use the county profile selector above as a keyboard-accessible alternative.")
+            st.pydeck_chart(county_deck(frame, selected, **region_options), height=380, key="county_map", on_select=partial(open_map_profile, requested_region), selection_mode="single-object", alt=f"{requested_region.name} counties colored by estimated prevalence. Use the county profile selector in the sidebar as a keyboard-accessible alternative.")
             st.caption("Light → dark teal: lower → higher estimates · Gray: no estimate · Copper outline: in your comparison.")
             if not frame.empty:
                 st.caption(f"{len(frame)} {requested_region.name} counties · County estimates range from {frame.prevalence.min():.1f}% to {frame.prevalence.max():.1f}%.")
@@ -117,7 +119,7 @@ def _render_health(db, requested_region, view, use_demo, dataset, region_options
             if current_profile in county_names(requested_region):
                 st.markdown(f"**{county_names(requested_region)[current_profile]} County selected.**")
             else:
-                st.caption("Hover for details. Click a county, or choose a county above.")
+                st.caption("Hover for details. Click a county, or choose a county in the sidebar.")
             with st.expander("Map legend & source"):
                 st.caption("Colors adjust to each measure and year. Crude prevalence reflects county age differences; colors are not directly comparable between measures. Pan or zoom to explore; hover for 95% confidence intervals.")
                 st.caption("Boundaries: [Plotly county GeoJSON](https://github.com/plotly/datasets/blob/0c447c47b757ad74edecab31f0d72f849d2e67c2/geojson-counties-fips.json), MIT license. Generalized boundaries for visualization; boundary vintage is unverified, so they are not evidence of precise geography or historical boundary alignment.")
@@ -128,7 +130,7 @@ def _render_health(db, requested_region, view, use_demo, dataset, region_options
                 profile = county_profile(db, fips, year, **region_options)
                 records = {row.measure: row for row in profile.itertuples()}
                 with st.expander("Headline estimates"):
-                    cards = st.columns(3)
+                    cards = [st.container() for _ in range(3)]
                     for card, (code, label) in zip(cards, list(MEASURES.items())[:3]):
                         with card.container(border=True):
                             row = records.get(code)
@@ -149,7 +151,7 @@ def _render_health(db, requested_region, view, use_demo, dataset, region_options
                             context = census.context(fips, year, api_key=census_api_key(), **census_options)
                         if context["warning"]:
                             st.warning(context["warning"])
-                        context_cards = st.columns(3)
+                        context_cards = [st.container(), *st.columns(2)]
                         labels = [("Population", "population", "population_moe", False),
                                   ("Residents age 65+", "age65_pct", "age65_moe", True),
                                   ("Below poverty level", "poverty_pct", "poverty_moe", True)]
@@ -178,7 +180,7 @@ def _render_health(db, requested_region, view, use_demo, dataset, region_options
                 st.button("Open county comparison", on_click=navigation.go, args=("compare",))
             if not fips:
                 st.subheader('County spotlight', anchor='county-profile')
-                st.info('Choose a county above or on the map to explore its conditions and community context.')
+                st.info('Choose a county in the sidebar or on the map to explore its conditions and community context.')
                 st.altair_chart(distribution(frame), width='stretch')
                 st.caption('One observation per county. County median is not population-weighted statewide prevalence.')
         st.caption('Crude rates reflect age composition. Higher prevalence alone does not establish greater healthcare demand.')
@@ -193,7 +195,7 @@ def _render_health(db, requested_region, view, use_demo, dataset, region_options
                 st.download_button("Download comparison CSV", county_export.to_csv(index=False), f"health-atlas-{requested_region.name.lower()}.csv", "text/csv")
         local_view = render_tracts(fips, measure, year, use_demo) if requested_region == OREGON else {}
     else:
-        selected = st.multiselect('Counties to compare', options, key='compare_counties')
+        selected = controls.multiselect('Counties to compare', options, key='compare_counties')
         visible = frame[frame.county.isin(selected)]
         if not visible.empty:
             st.altair_chart(intervals(visible), width='stretch')
@@ -211,9 +213,9 @@ def _render_health(db, requested_region, view, use_demo, dataset, region_options
             st.session_state["include_census"] = st.query_params.get("census") == "1" and not use_demo
         if use_demo:
             st.session_state["include_census"] = False
-        include_census = st.checkbox("Include Census demographics", key="include_census", disabled=use_demo, help="Uses the cached ACS release when available. The first load may need a Census request.")
+        include_census = controls.checkbox("Include Census demographics", key="include_census", disabled=use_demo, help="Uses the cached ACS release when available. The first load may need a Census request.")
         if not selected:
-            st.info("Choose counties above to build a side-by-side comparison.")
+            st.info("Choose counties in the sidebar to build a side-by-side comparison.")
         else:
             names_to_fips = dict(zip(frame.county, frame.fips))
             codes = [names_to_fips[name] for name in selected]

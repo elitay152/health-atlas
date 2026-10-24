@@ -36,7 +36,7 @@ JSON exports include Washington state/FIPS at report and county-row level, each
 source's region/coverage/provenance, the pinned county definition, values and
 unsupported aggregations. The Washington filename is
 `health-atlas-washington-area-summary.json`; Oregon's filename and default call
-signature stay compatible. Area comparisons remain Oregon-only (#63).
+signature stay compatible. Washington also supports [saved-source area comparisons](washington-area-comparisons.md).
 
 ## Verification — October 24, 2026
 
@@ -58,7 +58,6 @@ Synthetic tests verify foreign and legacy state rejection for every source,
 incomplete/duplicate/negative/wrong-period populations, missing uncertainty,
 changed/incomplete addresses, county mismatches, corrupt sources, retained-failure
 status, no network/filesystem writes and no Oregon fallback. UI checks cover opt-in
-loading, membership links, navigation retention, empty areas and unavailable
-Washington comparison controls. Desktop/mobile browser evidence is included below.
+loading, membership links, navigation retention, empty areas and opt-in Washington comparison controls. Desktop/mobile browser evidence is included below.
 
 [Desktop](images/washington-area-summary-desktop.png) · [Mobile](images/washington-area-summary-mobile.png)

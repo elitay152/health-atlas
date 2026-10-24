@@ -83,7 +83,7 @@ def test_comparison_ui_opt_in_and_outage(tmp_path, monkeypatch):
     assert any("Health comparisons remain available" in i.value for i in app.info)
     app.multiselect[0].set_value([]).run()
     assert not app.exception
-    assert any("Choose counties above" in i.value for i in app.info)
+    assert any("Choose counties in the sidebar" in i.value for i in app.info)
 
 
 def test_demo_comparison_never_loads_real_census(tmp_path, monkeypatch):

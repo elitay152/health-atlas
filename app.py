@@ -40,22 +40,25 @@ def switch_region():
     st.session_state.clear()
 
 
-st.sidebar.selectbox('State', [r.abbr for r in REGIONS.values() if r.deployed],
+st.sidebar.title('Health Atlas')
+st.sidebar.radio('State', [r.abbr for r in REGIONS.values() if r.deployed],
     index=[r.abbr for r in REGIONS.values() if r.deployed].index(region.abbr),
-    format_func=lambda code: get_region(code).name, key='region_selector', on_change=switch_region)
+    format_func=lambda code: get_region(code).name, key='region_selector', on_change=switch_region, horizontal=True)
+st.sidebar.radio('View', list(navigation.VIEWS), format_func=navigation.VIEWS.get,
+                 key='view_selector', on_change=navigation.choose_view)
+st.sidebar.divider()
+filter_panel = st.sidebar.container()
 if 'demo_mode' not in st.session_state:
     st.session_state['demo_mode'] = st.query_params.get('demo') == '1' and region == OREGON
     if st.query_params.get('demo') == '1' and region != OREGON:
         st.warning('The synthetic demo is available for Oregon only. This Washington view uses real data.')
 use_demo = st.sidebar.toggle('Use synthetic demo data', key='demo_mode', disabled=region != OREGON)
-st.caption(f'{region.name.upper()} / COMMUNITY HEALTH' + (' / SYNTHETIC DEMO' if use_demo else ''))
-st.title('Health Atlas')
-st.selectbox('View', list(navigation.VIEWS), format_func=navigation.VIEWS.get,
-             key='view_selector', on_change=navigation.choose_view)
+st.caption(f'HEALTH ATLAS / {region.name.upper()} / COMMUNITY HEALTH' + (' / SYNTHETIC DEMO' if use_demo else ''))
+st.title(navigation.VIEWS[view])
 if invalid_view:
     st.warning('That view is not supported. Showing Explore counties.')
-if region != OREGON and any(k in st.query_params for k in ('local', 'tract', 'tract_year', 'area_compare', 'area_b', 'area_b_rev', 'area_b_year')):
-    st.warning('Oregon-only tract and area-comparison settings were omitted from this Washington view.')
+if region != OREGON and any(k in st.query_params for k in ('local', 'tract', 'tract_year')):
+    st.warning('Oregon-only tract settings were omitted from this Washington view.')
 
 region_options = {} if region == OREGON else {'region': region}
 if region != OREGON:
@@ -64,10 +67,12 @@ dataset = os.environ.get('CDC_PLACES_DATASET', DEFAULT_DATASET)
 health_view = view in {'explore', 'compare'}
 refresh_clicked = False
 if health_view or view == 'sources':
-    with st.sidebar.expander('Source & refresh'):
+    st.sidebar.divider()
+    refresh_clicked = st.sidebar.button('Refresh data', disabled=use_demo,
+        help='Refresh the configured CDC release. Cached for 24 hours; attempts share a five-minute limit.')
+    if view == 'sources':
         st.text(f'Dataset: {dataset}')
         st.caption('The maintainer chooses the CDC release. Cached for 24 hours; refresh attempts share a five-minute limit.')
-        refresh_clicked = st.button('Refresh data', disabled=use_demo)
 
 unreadable = False
 if DB_PATH.exists():
@@ -111,7 +116,7 @@ updates = {}
 replace = set()
 if health_view:
     if use_demo or (path.exists() and not unreadable):
-        updates = render_health(path, region, view, use_demo, dataset)
+        updates = render_health(path, region, view, use_demo, dataset,controls=filter_panel)
         replace = navigation.HEALTH_KEYS | navigation.LOCAL_KEYS
     else:
         st.info('No CDC data is available for this view. Try Refresh data after five minutes, or ask the maintainer to check the saved snapshot and data source.')
@@ -125,13 +130,14 @@ elif view == 'areas':
         st.session_state['estimate_year'] = next((y for y in years if str(y) == raw_year), 2023)
     if st.session_state['estimate_year'] not in years:
         st.session_state['estimate_year'] = 2023
-    year = st.selectbox('Estimate year', years, key='estimate_year')
-    updates = render_service_area(use_demo, health_path=DB_PATH, year=year, **region_options) | {'year': str(year)}
+    filter_panel.subheader('Area settings')
+    year = filter_panel.selectbox('Estimate year', years, key='estimate_year')
+    updates = render_service_area(use_demo, health_path=DB_PATH, year=year, controls=filter_panel, **region_options) | {'year': str(year)}
     replace = navigation.AREA_KEYS | {'year'}
 elif view == 'access':
     st.caption('Explore facility listings and workforce shortage designations. These sources describe different aspects of access; they do not measure capacity or demand.')
-    render_hospitals(use_demo, context_available=DB_PATH.exists() and not unreadable, **region_options)
-    render_hrsa(use_demo, **region_options)
+    render_hospitals(use_demo, context_available=DB_PATH.exists() and not unreadable, controls=filter_panel, **region_options)
+    render_hrsa(use_demo, controls=filter_panel, **region_options)
 else:
     st.caption('Inspect saved coverage and source dates. Status inspection makes no source requests; use explicit refresh controls when needed.')
     year = st.session_state.get('estimate_year')

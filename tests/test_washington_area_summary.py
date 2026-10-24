@@ -168,9 +168,9 @@ def test_ui_region_summary_and_navigation_retention(snapshots,monkeypatch):
     app.checkbox(key='show_area_summary').check().run()
     assert not app.exception and any(m.label=='ACS population' and m.value=='300' for m in app.metric)
     assert any(m.label=='CMS-listed hospitals' and m.value=='2' for m in app.metric)
-    assert not any(c.key=='compare_areas' for c in app.checkbox)
-    app.selectbox(key='view_selector').select('sources').run()
-    app.selectbox(key='view_selector').select('areas').run()
+    assert not app.checkbox(key='compare_areas').value
+    app.radio(key='view_selector').set_value('sources').run()
+    app.radio(key='view_selector').set_value('areas').run()
     assert not app.exception and app.checkbox(key='show_area_summary').value
     assert app.query_params['state']=='WA' and app.query_params['area']=='53033,53061'
     other=AppTest.from_file(Path(__file__).resolve().parents[1]/'app.py',default_timeout=20)

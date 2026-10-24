@@ -38,18 +38,18 @@ def test_durable_selections_across_hidden_widget_cleanup(saved):
     v = app(county='41051')
     assert not v.exception
     assert v.selectbox(key='profile_county').value == '41051'
-    v.selectbox(key='view_selector').select('compare').run()
+    v.radio(key='view_selector').set_value('compare').run()
     v.multiselect(key='compare_counties').set_value(['Lane']).run()
-    v.selectbox(key='view_selector').select('areas').run()
+    v.radio(key='view_selector').set_value('areas').run()
     v.multiselect(key='area_counties').set_value(['41039', '41051']).run()
     v.run()  # Allow hidden widgets to undergo actual Streamlit cleanup.
-    v.selectbox(key='view_selector').select('explore').run()
+    v.radio(key='view_selector').set_value('explore').run()
     assert not v.exception and v.selectbox(key='profile_county').value == '41051'
     assert v.query_params['compare'] == '41039'
     assert v.query_params['area'] == '41039,41051'
-    v.selectbox(key='view_selector').select('compare').run()
+    v.radio(key='view_selector').set_value('compare').run()
     assert v.multiselect(key='compare_counties').value == ['Lane']
-    v.selectbox(key='view_selector').select('areas').run()
+    v.radio(key='view_selector').set_value('areas').run()
     assert v.multiselect(key='area_counties').value == ['41039', '41051']
     linked = app(**dict(v.query_params))
     assert not linked.exception and linked.multiselect(key='area_counties').value == ['41039', '41051']
@@ -75,12 +75,12 @@ def test_external_links_and_region_switch_replace_linked_state(saved):
     v.selectbox(key='profile_county').set_value('41039').run()
     v.query_params.clear(); v.query_params.update(prior); v.run()
     assert not v.exception and v.selectbox(key='profile_county').value == '41051'
-    v.selectbox(key='view_selector').select('areas').run()
+    v.radio(key='view_selector').set_value('areas').run()
     v.multiselect(key='area_counties').set_value(['41051']).run()
-    v.selectbox(key='region_selector').set_value('WA').run()
+    v.radio(key='region_selector').set_value('WA').run()
     assert not v.exception and v.multiselect(key='area_counties').value == []
     assert v.query_params['state'] == 'WA' and 'area' not in v.query_params
-    v.selectbox(key='view_selector').select('explore').run()
+    v.radio(key='view_selector').set_value('explore').run()
     assert v.selectbox(key='profile_county').value is None
     assert len(v.selectbox(key='profile_county').options) == 39
 
@@ -94,6 +94,21 @@ def test_legacy_and_invalid_view_resolution():
 
 def test_invalid_view_falls_back_without_retaining_unknown_url_fields(saved):
     v = app(view='unknown', token='never-share')
-    assert not v.exception and v.selectbox(key='view_selector').value == 'explore'
+    assert not v.exception and v.radio(key='view_selector').value == 'explore'
     assert v.query_params['view'] == 'explore' and 'token' not in v.query_params
     assert any('view is not supported' in w.value for w in v.warning)
+
+
+def test_sidebar_shows_navigation_and_active_filters(saved):
+    v=app(county='41051')
+    assert not v.exception
+    assert v.sidebar.radio(key='view_selector').options==list(navigation.VIEWS.values())
+    assert v.sidebar.radio(key='region_selector').options==['Oregon','Washington']
+    assert v.sidebar.selectbox(key='health_measure').value=='DIABETES'
+    assert v.sidebar.selectbox(key='profile_county').value=='41051'
+    v.radio(key='view_selector').set_value('compare').run()
+    assert v.sidebar.multiselect(key='compare_counties')
+    assert v.sidebar.checkbox(key='include_census')
+    v.radio(key='view_selector').set_value('areas').run()
+    assert v.sidebar.multiselect(key='area_counties')
+    assert v.sidebar.checkbox(key='compare_areas')

@@ -5,17 +5,24 @@ import json
 
 from oregon_health import service_areas
 from oregon_health.service_area_summary import summarize
+from oregon_health.regions import OREGON, get_region
 
 
-def comparison(a_codes,b_codes,a_year,b_year,**kwargs):
-    a=summarize(a_codes,a_year,**kwargs)
-    b=summarize(b_codes,b_year,**kwargs)
-    return assemble(a,b)
+def comparison(a_codes,b_codes,a_year,b_year,*,region=OREGON,**kwargs):
+    region=get_region(region)
+    region.require("service_area_compare")
+    a=summarize(a_codes,a_year,region=region,**kwargs)
+    b=summarize(b_codes,b_year,region=region,**kwargs)
+    return assemble(a,b,region=region)
 
 
-def assemble(a,b):
+def assemble(a,b,*,region=OREGON):
+    region=get_region(region)
+    region.require('service_area_compare')
     for r in (a,b):
-        service_areas.loads(json.dumps(r['area']).encode())
+        service_areas.loads(json.dumps(r['area']).encode(),region=region)
+        if r.get('state',region.abbr)!=region.abbr or r.get('state_fips',region.state_fips)!=region.state_fips:
+            raise ValueError('Area summary belongs to another region')
     loaded_a={s['source']:s['state']=='Loaded' for s in a['sources']}
     loaded_b={s['source']:s['state']=='Loaded' for s in b['sources']}
     shared=sorted(set(a['area']['health_atlas']['county_fips']) & set(b['area']['health_atlas']['county_fips']))
@@ -49,7 +56,7 @@ def assemble(a,b):
         x,y=by_a[key],by_b[key]
         if x['state']=='Loaded' and y['state']=='Loaded' and x['provenance']!=y['provenance']:
             warnings.append(f'{key} source snapshots/periods differ between areas. Review source dates before comparing.')
-    return dict(schema_version=1,areas={'Area A':a,'Area B':b},shared_counties=shared,
+    return dict(schema_version=1,state=region.abbr,state_fips=region.state_fips,areas={'Area A':a,'Area B':b},shared_counties=shared,
         shared_cms_ids=cms,shared_accepted_point_ids=points,
         shared_hrsa_designations=[dict(discipline=d,designation_id=i) for d,i in hrsa] if hrsa is not None else None,
         periods_match=a['estimate_year']==b['estimate_year'],warnings=sorted(warnings),
@@ -60,7 +67,7 @@ def export_rows(report):
     rows=[]
     for label,r in report['areas'].items():
         sources={s['source']:s for s in r['sources']}
-        base=dict(area=label,area_counties=','.join(r['area']['health_atlas']['county_fips']),
+        base=dict(state=report['state'],state_fips=report['state_fips'],area=label,area_counties=','.join(r['area']['health_atlas']['county_fips']),
                   boundary_revision=r['area']['health_atlas']['boundary_source']['sha256'],
                   shared_counties=','.join(report['shared_counties']),periods_match=report['periods_match'],
                   shared_cms_ids=','.join(report['shared_cms_ids']) if report['shared_cms_ids'] is not None else 'Not evaluated',
@@ -121,6 +128,11 @@ def export_csv(report):
     return out.getvalue()
 
 
-def link_params(codes,year):
-    p=service_areas.link_params(codes)
-    return dict(area_compare='1',area_b=p['area'],area_b_rev=p['area_rev'],area_b_year=str(year))
+def link_params(codes,year,*,region=OREGON):
+    region=get_region(region)
+    region.require("service_area_compare")
+    if type(year) is not int or not 2000<=year<=2100:
+        raise ValueError("Invalid comparison estimate year")
+    p=service_areas.link_params(codes,region=region)
+    params=dict(area_compare='1',area_b=p['area'],area_b_rev=p['area_rev'],area_b_year=str(year))
+    return params if region==OREGON else dict(state=region.abbr,**params)

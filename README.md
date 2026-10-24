@@ -4,17 +4,17 @@ A shared Python and SQL project exploring county health in Oregon and Washington
 
 ## Choose a task
 
-The **View** selector keeps one task on screen at a time, on desktop and mobile:
+The left sidebar shows all five **View** choices and both states. Active county, area and access filters live there; maps and results stay in the main workspace. On mobile, use the **Expand sidebar** menu button for navigation and filters. One task renders at a time:
 
 | View | What you can do |
 | --- | --- |
 | Explore counties | Choose a measure/year and county; see the map and county profile together, then drill into Oregon tracts. |
 | Compare counties | Choose comparison counties, inspect condition patterns and optional demographics, and download results. |
-| Service areas | Define/save/load whole-county membership; Both states support saved-source summaries; Oregon also supports area comparisons. |
+| Service areas | Define/save/load whole-county membership; Both states support saved-source summaries and area comparisons. |
 | Healthcare access | Search CMS hospitals, show optional approximate address matches, and explore HRSA shortage designations. |
 | Sources & methods | Inspect snapshot coverage, dates and interpretation guidance; explicitly refresh county data when needed. |
 
-The state selector and synthetic-demo setting apply across views. County, comparison,
+The visible sidebar state choices and synthetic-demo setting apply across views. County, comparison,
 area and access-filter selections survive view changes within the session. Changing
 states clears selections to prevent geography mixing. County comparison, tract and
 area settings are included in share links; hospital search/filter settings remain
@@ -28,7 +28,7 @@ available when switching tasks. Unknown query fields are removed. Source and acc
 views do not automatically fetch CDC county data, and saved-source area analysis
 never fetches missing sources. Use the source panels to load them explicitly.
 
-[Desktop preview](docs/images/task-navigation-desktop.png) · [Mobile preview](docs/images/task-navigation-mobile.png)
+[Desktop sidebar](docs/images/sidebar-navigation-desktop.png) · [Mobile sidebar](docs/images/sidebar-navigation-mobile.png)
 
 Application structure: `app.py` owns the shell and task dispatch;
 `oregon_health/navigation.py` validates routing and preserves analytical state across
@@ -109,7 +109,7 @@ Boundaries are bundled locally, so deployment needs no map API key, tile provide
 
 ## County profiles and sharing
 
-Click a county on the map to open **County spotlight**, or use the keyboard-accessible **County profile** selector above the map. A profile shows three headline estimates plus a chart covering all nine conditions, with 95% confidence intervals for the selected estimate year. Missing measures say **Unavailable**; data from a different year is not silently substituted. **Add county to comparison** adds the county to the existing comparison when it has a record for the current map measure.
+Click a county on the map to open **County spotlight**, or use the keyboard-accessible **County profile** selector in the sidebar. A profile shows three headline estimates plus a chart covering all nine conditions, with 95% confidence intervals for the selected estimate year. Missing measures say **Unavailable**; data from a different year is not silently substituted. **Add county to comparison** adds the county to the existing comparison when it has a record for the current map measure.
 
 Selecting a profile updates the browser URL. Copy it to share the county, year, current measure and explicit synthetic demo mode. For example, `?county=41051&year=2023&measure=DIABETES&demo=0` opens Multnomah County using real data. Links refer to the deployment's configured CDC release, not an immutable historical snapshot. Unknown county IDs are ignored with a warning, and unavailable year/measure options fall back to available data shown in the controls. Clearing the profile removes the county parameter.
 
@@ -141,7 +141,7 @@ The key is only sent to the fixed Census HTTPS data endpoint, as its required `k
 
 ## Side-by-side county comparison
 
-**Compare the whole picture** uses the counties selected above the map to display all nine health measures plus population, age 65+ share and poverty in one table. Estimates are joined by county FIPS, not names, and restricted to the selected health-estimate year. The comparison preserves county selection order. Missing/suppressed values are **Unavailable**, never zero; Census values are **Not loaded** until explicitly requested.
+**Compare the whole picture** uses the counties selected in the Compare counties sidebar to display all nine health measures plus population, age 65+ share and poverty in one table. Estimates are joined by county FIPS, not names, and restricted to the selected health-estimate year. The comparison preserves county selection order. Missing/suppressed values are **Unavailable**, never zero; Census values are **Not loaded** until explicitly requested.
 
 Choose **Include Census demographics** to load community context. It reuses the statewide Census cache used by county profiles; no extra request is needed per county when that cache is fresh. Census loading is opt-in to keep the initial map fast. A missing key or failed request leaves the health comparison usable, and previously cached demographics carry a stale-data warning. Synthetic mode never loads real demographics.
 
@@ -171,7 +171,7 @@ Refresh outcomes are persisted in ignored `data/.source-status.sqlite3`, using o
 
 ## Navigation and mobile use
 
-Measure and year filters are on the main page, above the map, so they remain accessible when the mobile sidebar is closed. The sidebar holds data settings and refresh controls. Page links jump to the map, county profile, full comparison or data-status panel.
+The sidebar shows all five task views, state choices and active filters. Measure, year, county and area filters stay beside the results on desktop; on mobile, open the native sidebar menu to change them, then close it to return to the workspace. Only the active task renders, and valid selections survive task navigation.
 
 The page follows **map → county profile → comparison**. Clicking a county exposes a **View county profile** link below the map. The profile's add button updates the comparison; **View comparison** and **Back to map** links connect the steps. Shared comparison/profile links retain the same state as before.
 
@@ -338,7 +338,7 @@ Tract details distinguish three cases: no saved source row (reason unverified), 
 
 ## Define a service area
 
-Use **Define a service area → Counties in the service area** to select whole Oregon counties by their stable five-digit IDs. This selection is separate from comparison counties and County spotlight, includes counties even when health estimates are missing, and permits disconnected sets. Each county is included once; duplicate IDs are removed. The preview shows membership only, with teal fill/copper outlines for included counties and gray for excluded counties. Enable **Show service-area summary** below the definition to review saved health, demographic and access context.
+Use **Service areas → Counties in the service area** in the sidebar to select whole Oregon or Washington counties by their stable five-digit IDs. This selection is separate from comparison counties and County spotlight, includes counties even when health estimates are missing, and permits disconnected sets. Each county is included once; duplicate IDs are removed. The preview shows membership only, with teal fill/copper outlines for included counties and gray for excluded counties. Enable **Show service-area summary** in the sidebar to review saved health, demographic and access context.
 
 Copy the browser address to share a definition. `area` stores a canonical county-ID list and `area_rev` pins the bundled boundary SHA-256. **Download area definition (GeoJSON)** also saves the selected display polygons, schema version, whole-county inclusion rule and boundary source/license/revision. **Load a saved area** reloads a compatible file. Empty definitions round-trip too; **Clear service area** retains an explicit empty selection. No account, database write or external request is needed for area definitions, and the selector remains usable when county CDC data is unavailable. Definitions are disabled in synthetic demo mode.
 
@@ -387,7 +387,7 @@ Example with overlapping Lane/Multnomah and Clackamas/Multnomah definitions:
 
 ## Region configuration (Oregon and Washington county explorer)
 
-`oregon_health.regions` defines explicit state abbreviations/FIPS, expected county catalogs, map centers/bounds, source coverage and deployment status. Oregon and Washington are available through the sidebar state selector. Washington supports **county CDC health, ACS context and CMS hospital listings**; tracts and area comparisons remain Oregon-specific; saved-source service-area summaries support both states. Whole-county service-area definitions are available in both states. HRSA shortage-designation layers are available in both states. Optional address locations are available for hospitals in both states. A `state=WA` link loads the isolated Washington explorer. Unsupported state codes are rejected; switching states clears view selections to prevent cross-state reuse.
+`oregon_health.regions` defines explicit state abbreviations/FIPS, expected county catalogs, map centers/bounds, source coverage and deployment status. Oregon and Washington are available through the sidebar state selector. Washington supports **county CDC health, ACS context and CMS hospital listings**; tracts remain Oregon-specific; saved-source service-area summaries and comparisons support both states. Whole-county service-area definitions are available in both states. HRSA shortage-designation layers are available in both states. Optional address locations are available for hospitals in both states. A `state=WA` link loads the isolated Washington explorer. Unsupported state codes are rejected; switching states clears view selections to prevent cross-state reuse.
 
 Inspect a region without network requests:
 
@@ -405,7 +405,7 @@ Python county and ACS functions accept a keyword `region` from `get_region("WA")
 
 Oregon keeps its existing `data/oregon.duckdb`, `data/census_<year>.duckdb`, refresh/status files, layer IDs and links without a state parameter. Washington defaults to **`data/regions/wa/counties.duckdb`** and **`data/regions/wa/census_<year>.duckdb`**, with separate refresh reservations/status files. Explicit custom paths remain supported, but a snapshot belonging to another state is rejected before refresh/read or replacement. New county/ACS provenance records state FIPS. Legacy provenance without a state marker is treated as Oregon only; it remains readable and receives the explicit marker on a successful refresh, with no bulk rename or destructive migration.
 
-Generic county links can include `state=WA`; their county IDs are validated with the corresponding catalog when parsed. Oregon links retain their prior format. The live app rejects unsupported regions rather than falling back to Oregon. Washington demo/tract/area-comparison settings are warned about and omitted, and Oregon-only source controls/audits are not rendered. State-aware maps, county profiles, comparisons, CSV exports and data-status reports use the active catalog. Source coverage flags describe available capabilities, not nationwide completeness. See the [release verification and contributor checklist](docs/region-release-check.md) for source periods, joins, missingness, browser checks and remaining limitations.
+Generic county links can include `state=WA`; their county IDs are validated with the corresponding catalog when parsed. Oregon links retain their prior format. The live app rejects unsupported regions rather than falling back to Oregon. Washington demo/tract settings are warned about and omitted, and Oregon-only source controls/audits are not rendered. State-aware maps, county profiles, comparisons, CSV exports and data-status reports use the active catalog. Source coverage flags describe available capabilities, not nationwide completeness. See the [release verification and contributor checklist](docs/region-release-check.md) for source periods, joins, missingness, browser checks and remaining limitations.
 
 Verified 2026-10-23: Washington CDC 2025 county release returned **351 estimates / 39 counties** for the nine curated conditions, and ACS 2023 returned all **39 counties** with estimate/MOE fields. Live checks used separate ignored Washington caches. The Washington county asset comes from the same pinned MIT-licensed Plotly source; see [boundary provenance](assets/README.md#washington-county-boundaries-development-target). Synthetic two-region fixtures and Oregon regressions cover cache identities, legacy migration, source filters, geography counts, maps, links and unsupported-source guards.
 
@@ -438,8 +438,8 @@ Measured on the Linux cloud workspace, 2026-10-23 (CDC 2025 county release, esti
 | Oregon | 36 / 324 | 3.943 s | 0.088 s | 4 / 0 | 115.7 MiB | 2,121,728 bytes | Yes |
 | Washington | 39 / 351 | 3.188 s | 0.097 s | 4 / 0 | 115.8 MiB | 2,121,728 bytes | Yes |
 
-Development budgets per state: **cold <120 seconds, warm <2 seconds with zero requests, peak RSS <512 MiB, combined county+ACS files <10 MB**, with failure retention required. These are regression gates for the representative importer/query workload, not Streamlit browser rendering, full-app RSS, other source refreshes or concurrent-user benchmarks. Network timing varies; RSS is the subprocess lifetime high-water mark including imports. A replacement temporarily needs room for both old and new files, and long-lived readers can retain an old file's disk allocation. Washington's county UI is enabled after the [two-state release verification](docs/region-release-check.md); Tracts and area comparisons remain Oregon-only; saved-source summaries support both states. Washington supports [whole-county area definitions](docs/washington-service-areas.md).
+Development budgets per state: **cold <120 seconds, warm <2 seconds with zero requests, peak RSS <512 MiB, combined county+ACS files <10 MB**, with failure retention required. These are regression gates for the representative importer/query workload, not Streamlit browser rendering, full-app RSS, other source refreshes or concurrent-user benchmarks. Network timing varies; RSS is the subprocess lifetime high-water mark including imports. A replacement temporarily needs room for both old and new files, and long-lived readers can retain an old file's disk allocation. Washington's county UI is enabled after the [two-state release verification](docs/region-release-check.md); Tracts remain Oregon-only; saved-source summaries and area comparisons support both states. Washington supports [whole-county area definitions](docs/washington-service-areas.md).
 
 Washington now supports [HRSA shortage-designation layers](docs/washington-shortage-designations.md) with isolated state caches, source-status filters, missing geometry and accessible details. Run `uv run python -m oregon_health.hrsa --region WA` for an optional live import. The source is independent of CMS hospitals and health prevalence; HPSA IDs do not identify CMS facilities.
 
-Washington supports [whole-county service-area definitions](docs/washington-service-areas.md): local membership maps, GeoJSON save/load and state/revision-pinned shared links. Washington now supports [saved-source area summaries](docs/washington-area-summaries.md). Area comparisons remain Oregon-only pending their separate state-aware rollout.
+Washington supports [whole-county service-area definitions](docs/washington-service-areas.md): local membership maps, GeoJSON save/load and state/revision-pinned shared links. Washington now supports [saved-source area summaries](docs/washington-area-summaries.md). Washington also supports [saved-source area comparisons](docs/washington-area-comparisons.md), including overlap warnings and state-aware CSV/JSON exports.

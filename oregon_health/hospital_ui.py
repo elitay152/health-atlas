@@ -97,7 +97,8 @@ def _detail(record, context_available, location=None, *, region=OREGON):
         st.info("This facility's county could not be linked to the selected state’s community context.")
 
 
-def render_hospitals(demo=False, context_available=True, *, region=OREGON):
+def render_hospitals(demo=False, context_available=True, *, region=OREGON, controls=None):
+    controls=controls if controls is not None else st.sidebar
     region = get_region(region)
     region.require("hospitals")
     region_options = {} if region == OREGON else {"region": region}
@@ -107,7 +108,8 @@ def render_hospitals(demo=False, context_available=True, *, region=OREGON):
     if demo:
         # Do not mix a previously enabled real directory into synthetic sessions.
         st.session_state["show_hospitals"] = False
-    enabled = st.checkbox("Show hospital directory", key="show_hospitals", disabled=demo,
+    controls.subheader("Hospitals")
+    enabled = controls.checkbox("Show hospital directory", key="show_hospitals", disabled=demo,
                           help="Loads CMS public hospital records separately from health estimates. No API key is needed.")
     if demo:
         st.info("Hospital listings are available in real-data mode. No real facility records are mixed into the synthetic demo.")
@@ -167,14 +169,14 @@ def render_hospitals(demo=False, context_available=True, *, region=OREGON):
     names = county_names(region)
     county_options = [None, *names, UNKNOWN]
     county_label = lambda value: f"All {region.name} counties" if value is None else "Unresolved county" if value == UNKNOWN else f"{names[value]} County"
-    search_col, county_col = st.columns([1.5, 1])
+    search_col = county_col = controls
     query = search_col.text_input("Search hospitals", key="hospital_query", max_chars=120,
                                   placeholder="Name, city, ZIP, address or facility ID")
     county = county_col.selectbox("Hospital county", county_options, format_func=county_label, key="hospital_county")
     available_types = sorted({r["hospital_type"] or "Not reported" for r in records})
     if "hospital_types" in st.session_state:
         st.session_state["hospital_types"] = [t for t in st.session_state["hospital_types"] if t in available_types]
-    types = st.multiselect("Hospital types", available_types,
+    types = controls.multiselect("Hospital types", available_types,
                            key="hospital_types", placeholder="All hospital types")
     filtered = filter_records(records, query, county, types, region=region)
     st.caption(f"{len(filtered)} of {len(records)} listed hospitals match your filters.")
@@ -182,7 +184,7 @@ def render_hospitals(demo=False, context_available=True, *, region=OREGON):
         st.info("No listed hospitals match these filters. Try another county or clear the search and type filters. This does not establish an absence of healthcare services.")
         return
     if "hospital_locations" in region.supported_sources:
-        locations, location_provenance = render_locations(records, filtered, **region_options)
+        locations, location_provenance = render_locations(records, filtered, controls=controls, **region_options)
     else:
         locations, location_provenance = {}, None
         st.info(f"CMS supplies no coordinates. Address locations are unavailable for {region.name}. Listings remain searchable below.")

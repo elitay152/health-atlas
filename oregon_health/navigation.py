@@ -99,7 +99,7 @@ def finish(view, region, demo, updates=None, replace=()):
         params.pop('state', None)
     else:
         params['state'] = region.abbr
-        for key in LOCAL_KEYS | {'area_compare', 'area_b', 'area_b_rev', 'area_b_year'}:
+        for key in LOCAL_KEYS:
             params.pop(key, None)
     # Sanitize inactive task links too; they must never carry foreign geography.
     from oregon_health.links import parse_counties
@@ -108,13 +108,14 @@ def finish(view, region, demo, updates=None, replace=()):
         params['compare'] = ','.join(codes or [])
     if params.get('county') not in region.counties():
         params.pop('county', None)
-    if 'area' in params:
-        from oregon_health.service_areas import parse_link
-        try:
-            parse_link(params['area'], params.get('area_rev'), region=region)
-        except ValueError:
-            params.pop('area', None)
-            params.pop('area_rev', None)
+    from oregon_health.service_areas import parse_link
+    for key, revision in [('area', 'area_rev'), ('area_b', 'area_b_rev')]:
+        if key in params:
+            try:
+                parse_link(params[key], params.get(revision), region=region)
+            except ValueError:
+                params.pop(key, None)
+                params.pop(revision, None)
     if demo:
         for key in LOCAL_KEYS | AREA_KEYS:
             params.pop(key, None)
