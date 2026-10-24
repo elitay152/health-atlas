@@ -99,7 +99,7 @@ def test_state_views_links_missingness_and_exports(state_caches, region):
 def test_washington_never_renders_oregon_only_sources(state_caches, monkeypatch):
     def forbidden(*args, **kwargs):
         pytest.fail('Washington must not render/query Oregon-only workflows')
-    for module, name in [(tract_ui, 'render_tracts'), (hospital_ui, 'render_hospitals'),
+    for module, name in [(tract_ui, 'render_tracts'),
                          (hrsa_ui, 'render_hrsa'), (service_area_ui, 'render_service_area'),
                          (status_ui, 'render_access_quality')]:
         monkeypatch.setattr(module, name, forbidden)
