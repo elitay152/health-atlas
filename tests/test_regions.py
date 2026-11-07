@@ -87,7 +87,7 @@ def test_region_query_filters_without_network(monkeypatch):
     def get(url,**kwargs):
         calls.append(kwargs)
         return {'name':'PLACES County Synthetic Release'} if '/api/views/' in url else health_rows(WA)
-    monkeypatch.setattr(import_data,'get_json',get)
+    monkeypatch.setattr(import_data,'get_json_with_retries',get)
     rows,_=import_data.fetch('abcd-1234',region=WA)
     assert len(rows)==351 and "stateabbr = 'WA'" in calls[-1]['params']['$where']
     calls=[]

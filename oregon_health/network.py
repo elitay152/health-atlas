@@ -59,3 +59,22 @@ def get_json(url, params=None, *, max_bytes=2_000_000):
                 raise ValueError('Source response exceeds the byte budget')
             chunks.append(chunk)
     return json.loads(b''.join(chunks))
+
+
+TRANSIENT_STATUSES = {429, 502, 503, 504}
+
+
+def get_json_with_retries(url, params=None, *, max_bytes=2_000_000, attempts=3):
+    """get_json, retrying timeouts, dropped connections and 429/5xx gateway errors.
+
+    Each attempt reserves its own slot in the host budget, so retries stay rate limited.
+    """
+    for attempt in range(attempts):
+        try:
+            return get_json(url, params, max_bytes=max_bytes)
+        except requests.RequestException as error:
+            status = error.response.status_code if error.response is not None else None
+            transient = isinstance(error, (requests.Timeout, requests.ConnectionError)) or status in TRANSIENT_STATUSES
+            if not transient or attempt == attempts - 1:
+                raise
+            time.sleep(attempt + 1)
